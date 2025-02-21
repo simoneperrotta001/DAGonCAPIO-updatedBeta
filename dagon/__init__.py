@@ -94,6 +94,9 @@ class Workflow(object):
         self.dag_tps = None
         self.dry = False
         self.tasks = []
+        self.capio_server_path = None
+        self.capio_libcapioposix_path = None
+        self.capio_libsyscall_intercept_path = None
         self.checkpoints = {}
         self.workflow_id = 0
         self.is_api_available = False
@@ -149,6 +152,143 @@ class Workflow(object):
     def set_stager_mover(self, stager_mover):
         self.stager_mover = stager_mover
 
+
+    def set_capio_server_path(self, path):
+        self.capio_server_path = path
+
+    def set_capio_libcapioposix_path(self, path):
+        self.capio_libcapioposix_path = path
+
+    def set_capio_libsyscall_intercept_path(self, path):
+        self.capio_libsyscall_intercept_path = path
+
+    def get_capio_server_path(self):
+        return self.capio_server_path
+
+    def get_capio_libcapioposix_path(self):
+        return self.capio_libcapioposix_path
+
+    def get_capio_libsyscall_intercept_path(self):
+        return self.capio_libsyscall_intercept_path
+
+    def create_scratch_directory_names_tasks_capio(self):
+        """
+        create task's scratch directory names in order to write these in the configuration file
+        that will be used by the CAPIO server
+        """
+        # aggiungere un metodo che oltre a fare queste 3 righe sotto faccia un controllo su quale dei due deve avere la working dir dell'altro in base alle dipendenze
+        for task in self.tasks:
+            if len(task.nexts) >= 1:
+                task.create_working_dir_name_capio()
+            """else:
+                if len(task.prevs) == 1:
+                    task.set_working_dir(task.prevs[0].working_dir)"""
+        # ho dovuto spezzare i due for poichè se viene scansionato prima b nel for la working dir di A non sarà ancora creata e quindi setterà valore null, facendo così no
+        #se ci sono task che vengono prima di quello analizzato (ovvero questo task dipende da questo/i task) allora settiamo a questo task la dependency dir = alle working dir di tutti i task precedenti da cui dipende
+        for task in self.tasks:
+            if len(task.prevs) >= 1:
+                n_prevs = len(task.prevs)
+                for i in range(n_prevs):
+                    task.set_dependency_dir(task.prevs[i].get_scratch_dir(), i)
+
+
+    def create_scratch_directory_tasks_capio(self):
+        """
+        create the effective scratch directory of all tasks that need it
+        (task that have one or more next tasks)
+        """
+        # aggiungere un metodo che oltre a fare queste 3 righe sotto faccia un controllo su quale dei due deve avere la working dir dell'altro in base alle dipendenze
+        for task in self.tasks:
+            if len(task.nexts) >= 1:
+                task.create_working_dir_capio()
+
+    def run_capio_server(self):
+        """
+        Run the CAPIO server with a script bash that will terminate at the end of the execution
+        with a kill command by another script
+        """
+        script = "#! /bin/bash\n\n"
+
+        script += "CAPIO_LOG_LEVEL=-1 CAPIO_DIR=" + self.cfg['batch']['scratch_dir_base'] + " " + self.capio_server_path + "/capio_server" + " -c ./pipeline-demo-capio.json > server.log & SERVER_PID=$!\n"
+        script += "echo $SERVER_PID > ./server_pid.txt\n"
+
+        self.tasks[0].on_execute(script, "run_capio_server.sh")
+
+    def is_server_capio_running(self):
+        """
+        Verifica se il server CAPIO è in esecuzione controllando il suo PID
+        nella lista di tutti i processi attivi.
+        """
+        pid_file = "./server_pid.txt"
+
+        # Verifica se il file contenente il PID esiste
+        if os.path.exists(pid_file):
+            self.logger.debug("Il file contenente il server PID esiste")
+            try:
+                with open(pid_file, "r") as f:
+                    self.logger.debug("Il file contenente il server PID è stato aperto")
+                    pid = f.read().strip()
+
+                    if not pid:
+                        self.logger.debug("Il file PID è vuoto")
+                        return False
+
+                    # Converte il valore letto in un intero
+                    pid = int(pid)
+                    self.logger.debug(f"Trovato PID: {pid}")
+
+                    # Verifica se il processo esiste nella directory /proc (valido solo su Linux)
+                    if os.path.exists(f"/proc/{pid}"):
+                        self.logger.debug("Il server CAPIO è in esecuzione")
+                        return True
+                    else:
+                        self.logger.debug("Il server CAPIO non è in esecuzione")
+            except ValueError:
+                self.logger.error(f"PID non valido trovato nel file {pid_file}: {pid}")
+            except Exception as e:
+                self.logger.error(f"Errore nella lettura del file PID: {e}")
+        else:
+            self.logger.debug("Il file PID non esiste")
+
+        return False
+
+    def generate_script_pipeline(self):
+        """
+        generate a script that execute a pipeline of programs in C
+        this programs will be executed with CAPIO
+        """
+        script = "#! /bin/bash\n\n"
+        script += "start_time=$(date +%s%N)\n"
+
+        for task in self.tasks:
+            if task.name == "C":
+                #script += "wait $task_A_pid\nwait $task_B_pid\n" #nel caso devo aggiungere pure all'esecuzione di A e B il task_A_pid e task_B_pid=$!
+                script += "/home/sperrotta/capio/build/src/C\n"
+            else:
+                arg = "CAPIO_LOG_LEVEL=-1 LD_PRELOAD=" + self.get_capio_libcapioposix_path() + "/libcapio_posix.so:" + self.get_capio_libsyscall_intercept_path() + " CAPIO_DIR=" + self.cfg['batch']['scratch_dir_base'] + " " + task.command
+                pos1 = arg.find(dagon.Workflow.SCHEMA, 0)
+                if pos1 != -1:
+                    arg = arg.replace(dagon.Workflow.SCHEMA, "")
+                    pos2 = arg.find("/", pos1)
+                    if pos2 != -1:
+                        arg = arg[:pos2 - 1]
+
+                dependency_dir = task.dependency_dir[0] if task.dependency_dir else task.working_dir
+                if task.name == "A":
+                    script += arg + " " + dependency_dir + " &\nsleep 1 &\n" #aggiunto per permettere ad A di eseguire il programma C in background così da poter permettere a B di fare streaming
+                else:
+                    script += arg + " " + dependency_dir + "\n"
+
+        #script += "wait $task_C_pid\n"
+        script += "end_time=$(date +%s%N)\n"
+        #total_time=$((end_time - start_time))
+        script += 'total_time=$(echo "scale=6; ($end_time - $start_time) / 1000000000" | bc)\n'
+        script += 'echo "Tempo totale trascorso: $total_time secondi" > /home/sperrotta/output_dir/total_execution_time.txt\n'
+        script += "SERVER_PID=$(cat ./server_pid.txt)\n"
+        script += "kill $SERVER_PID\n"
+
+        self.tasks[0].on_execute(script, "run_pipeline.sh")
+
     def get_scratch_dir_base(self):
         """
         Returns the path to the base scratch directory
@@ -157,6 +297,15 @@ class Workflow(object):
         :rtype: str with absolute path to the base scratch directory
         """
         return self.cfg['batch']['scratch_dir_base']
+
+    def get_capio_dir_base(self):
+        """
+        Returns the path to the base scratch directory
+
+        :return: Absolute path to the scratch directory
+        :rtype: str with absolute path to the base scratch directory
+        """
+        return self.cfg['capio']['capio_dir_base']
 
     def find_task_by_name(self, workflow_name, task_name):
         """
@@ -243,6 +392,26 @@ class Workflow(object):
         for task in self.tasks:
             jsonWorkflow['tasks'][task.name] = task.as_json()
         return jsonWorkflow
+
+    def as_json_capio(self):
+        """
+        Return a JSON representation of the workflow for capio
+
+        :return: JSON representation
+        :rtype: dict(str, object) with data class
+        """
+
+        jsonWorkflowCapio = {
+            "name": "Pipeline-Demo",
+            "IO_Graph": []
+        }
+
+        for task in self.tasks:
+            task_data = task.as_json_capio()
+            jsonWorkflowCapio['IO_Graph'].append(task_data)
+
+        return jsonWorkflowCapio
+
 
     def run(self, resume_checkpoint_file = None):
 

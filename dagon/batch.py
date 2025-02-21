@@ -74,12 +74,13 @@ class Batch(Task):
         #     return {"code": code, "message": message, "output": result.stdout}
         p = Popen(command.split(" "), stdin=PIPE, stdout=PIPE, stderr=PIPE, close_fds=True, bufsize=-1, universal_newlines=True)
         #print "commmand",command
-        out, err = p.communicate()
+        """out, err = p.communicate()
 
         code, message = 0, ""
         if len(err):
             code, message = 1, err
         return {"code": code, "message": message, "output": out}
+        """
 
 
     def on_execute(self, script, script_name):

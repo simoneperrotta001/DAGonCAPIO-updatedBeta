@@ -35,6 +35,15 @@ if __name__ == '__main__':
 
     workflow.make_dependencies()
 
+    #we have to create the working dirs before the execute (that will be not done with CAPIO), for the correct result of the json_CAPIO
+    for task in workflow.tasks:
+        task.create_working_dir()
+
+    jsonCapioWorkflow = workflow.as_json_capio()
+    with open('pipeline-demo-capio.json', 'w') as outfile:
+        stringWorkflow = json.dumps(jsonCapioWorkflow, sort_keys=False, indent=2)
+        outfile.write(stringWorkflow)
+
     jsonWorkflow = workflow.as_json()
     with open('dataflow-demo.json', 'w') as outfile:
         stringWorkflow = json.dumps(jsonWorkflow, sort_keys=True, indent=2)

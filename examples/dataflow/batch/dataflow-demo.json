@@ -13,7 +13,7 @@
       "prevs": [],
       "status": "READY",
       "type": "batch",
-      "working_dir": null
+      "working_dir": "/Users/simoneperrotta/temp/1737642491407-A"
     },
     "B": {
       "command": "echo $RANDOM > f2.txt; cat workflow:///A/output/f1.txt >> f2.txt",
@@ -26,7 +26,7 @@
       ],
       "status": "READY",
       "type": "batch",
-      "working_dir": null
+      "working_dir": "/Users/simoneperrotta/temp/1737642491407-B"
     },
     "C": {
       "command": "echo $RANDOM > f2.txt; cat workflow:///A/output/f1.txt >> f2.txt",
@@ -39,7 +39,7 @@
       ],
       "status": "READY",
       "type": "batch",
-      "working_dir": null
+      "working_dir": "/Users/simoneperrotta/temp/1737642491407-C"
     },
     "D": {
       "command": "cat workflow:///B/f2.txt >> f3.txt; cat workflow:///C/f2.txt >> f3.txt",
@@ -51,7 +51,7 @@
       ],
       "status": "READY",
       "type": "batch",
-      "working_dir": null
+      "working_dir": "/Users/simoneperrotta/temp/1737642491407-D"
     }
   }
 }

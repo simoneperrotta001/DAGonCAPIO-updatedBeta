@@ -1,0 +1,62 @@
+{
+  "name": "Pipeline-Demo",
+  "IO_Graph": [
+    {
+      "name": "A",
+      "input_stream": [],
+      "output_stream": [
+        "/Users/simoneperrotta/temp/1737642491407-A/output/f1.txt",
+        "/Users/simoneperrotta/temp/1737642491407-A/f1.txt"
+      ],
+      "streaming": [
+        {
+          "name": "/Users/simoneperrotta/temp/1737642491407-A",
+          "committed": "on_close",
+          "mode": "no_update"
+        }
+      ]
+    },
+    {
+      "name": "B",
+      "input_stream": [
+        "/Users/simoneperrotta/temp/1737642491407-A"
+      ],
+      "output_stream": [
+        "/Users/simoneperrotta/temp/1737642491407-B/f2.txt",
+        "/Users/simoneperrotta/temp/1737642491407-B/>"
+      ],
+      "streaming": [
+        {
+          "name": "/Users/simoneperrotta/temp/1737642491407-B",
+          "committed": "on_close",
+          "mode": "no_update"
+        }
+      ]
+    },
+    {
+      "name": "C",
+      "input_stream": [
+        "/Users/simoneperrotta/temp/1737642491407-A"
+      ],
+      "output_stream": [
+        "/Users/simoneperrotta/temp/1737642491407-C/f2.txt",
+        "/Users/simoneperrotta/temp/1737642491407-C/>"
+      ],
+      "streaming": [
+        {
+          "name": "/Users/simoneperrotta/temp/1737642491407-C",
+          "committed": "on_close",
+          "mode": "no_update"
+        }
+      ]
+    },
+    {
+      "name": "D",
+      "input_stream": [
+        "/Users/simoneperrotta/temp/1737642491407-B",
+        "/Users/simoneperrotta/temp/1737642491407-C"
+      ],
+      "output_stream": []
+    }
+  ]
+}

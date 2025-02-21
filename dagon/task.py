@@ -1,5 +1,6 @@
 import shutil
 import glob
+import re
 from json import loads, dumps
 from threading import Thread
 from threading import Semaphore
@@ -130,6 +131,7 @@ class Task(Thread):
         self.name = name
         self.nexts = []
         self.prevs = []
+        self.prevs_scratch_dirs = []
         self.reference_count = 0
         self.remove_scratch_dir = False
         self.ip = None
@@ -138,6 +140,8 @@ class Task(Thread):
         self.set_status(dagon.Status.READY)
         self.working_dir = working_dir
         self.command = command
+        self.input_file = []
+        self.output_file = []
         self.info = None
         self.dag_tps = None
         self.transversal_workflow = transversal_workflow
@@ -262,6 +266,32 @@ class Task(Thread):
             json_task['prevs'].append(t.name)
         return json_task
 
+    def as_json_capio(self):
+        """
+        Generates the JSON representation of the task for CAPIO server, ensuring proper input-output mappings.
+        """
+        input_streams = []
+        if self.prevs:
+            input_streams = [f"{prev.get_scratch_dir()}/*" for prev in self.prevs]
+
+        output_streams = []
+        if self.working_dir:
+            output_streams = [f"{self.working_dir}/*"]
+
+        json_task = {
+            "name": self.name,
+            "input_stream": input_streams,
+            "output_stream": output_streams,
+        }
+
+        if self.nexts:
+            json_task["streaming"] = [{
+                "dirname": [f"{self.working_dir}/*"],
+                "committed": "on_close",
+                "mode": "no_update"
+            }]
+
+        return json_task
     def set_workflow(self, workflow):
         """
         Set the workflow which execute this task
@@ -375,6 +405,31 @@ class Task(Thread):
     def set_semaphore(self, sem):
         self.semaphore = sem
 
+    def extract_output_files(self, command):
+        """
+        Estrae i file di output da un comando di shell, considerando sia >, >>, che altre forme di creazione file.
+
+        :param command: La stringa del comando.
+        :return: Una lista di file di output.
+        """
+        output_files = []
+
+        # Regex per identificare file dopo >, >>
+        patterns = [
+            r">>\s*([a-zA-Z0-9_.\/-]+)",  # File dopo >>
+            r">\s*([a-zA-Z0-9_.\/-]+)"  # File dopo >
+        ]
+
+        for pattern in patterns:
+            matches = re.findall(pattern, command)
+            for match in matches:
+                file_name = match.strip()
+                if file_name not in output_files:
+                    output_files.append(file_name)
+
+        self.output_file = output_files  # Evita duplicazioni
+        return output_files
+
     # Method overrided
     def pre_run(self):
         """
@@ -389,6 +444,12 @@ class Task(Thread):
         # get workflows of dag_tps
         if self.dag_tps is not None:
             self.workflows = self.dag_tps.workflows
+
+        output_files = self.extract_output_files(self.command)
+        for file_name in output_files:
+            final_file_name = file_name.split('/')[-1]
+            if final_file_name not in self.output_file:
+                self.output_file.append(final_file_name)
 
         # Forever unless no anymore dagon.Workflow.SCHEMA are present
         while True:
@@ -421,7 +482,7 @@ class Task(Thread):
 
             # The task name is the first element
             task_name = elements[1]
-            
+
             # Set the default workflow name if needed
             if workflow_name is None or workflow_name == "":
                 workflow_name = self.workflow.name
@@ -445,6 +506,9 @@ class Task(Thread):
                     self.add_transversal_point(task)
                 # Add the reference from the task
                 task.increment_reference_count()
+                for elem in elements[2:]:
+                    if ".txt" in elem:
+                        self.input_file.append(elem)
 
             if task is None:  # if is None means that task is from another WF maybe in the dagon service
                 #self.workflow.logger.debug("Adding transversal point")
@@ -717,6 +781,16 @@ class Task(Thread):
         """
         makedirs(path,exist_ok=True)
 
+    def mkdir_working_dir_capio(self):
+        """
+        Make the working directory with the CAPIO logic
+        """
+        script = "#! /bin/bash\n\n"
+
+        script += "CAPIO_LOG_LEVEL=-1 LD_PRELOAD=" + self.workflow.get_capio_libcapioposix_path() + "/libcapio_posix.so CAPIO_DIR=" + self.workflow.cfg['batch']['scratch_dir_base'] + " mkdir " + self.working_dir
+
+        self.on_execute(script, "create_dir" + self.name + ".sh")
+
     def create_working_dir(self):
         """
         Create the working directory
@@ -736,6 +810,28 @@ class Task(Thread):
                 self.workflow.api.update_task(self.workflow.workflow_id, self.name, "working_dir", self.working_dir)
             except Exception as e:
                 self.workflow.logger.error("%s: Error updating scratch directory on server %s", self.name, e)
+
+    def create_working_dir_name_capio(self):
+        """
+        create the working directory name of the task in order to write it in the json configuration file for CAPIO
+        """
+        if self.working_dir is None:
+            # Set a scratch directory as working directory
+            self.working_dir = self.workflow.get_scratch_dir_base() + self.get_scratch_name() #cambiato, tolto il + "/" rispetto all'originale per prevenzione
+
+    def create_working_dir_capio(self):
+        """
+        Create the working directory with the CAPIO logic
+        """
+        # Create scratch directory
+        self.mkdir_working_dir_capio()
+        self.workflow.logger.debug("%s: Scratch directory: %s", self.name, self.working_dir)
+        if self.workflow.is_api_available:  # change scratch directory on server
+            try:
+                self.workflow.api.update_task(self.workflow.workflow_id, self.name, "working_dir", self.working_dir)
+            except Exception as e:
+                self.workflow.logger.error("%s: Error updating scratch directory on server %s", self.name, e)
+
 
     def remove_reference_workflow(self):
         """
