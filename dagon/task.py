@@ -139,6 +139,7 @@ class Task(Thread):
         self.workflow = None
         self.set_status(dagon.Status.READY)
         self.working_dir = working_dir
+        self.dependency_dir = []
         self.command = command
         self.input_file = []
         self.output_file = []
@@ -155,7 +156,7 @@ class Task(Thread):
 
     def get_endpoint(self):
         return self.globusendpoint
-    
+
     def set_endpoint(self, globusendpoint):
         self.globusendpoint = globusendpoint
 
@@ -193,6 +194,19 @@ class Task(Thread):
 
         self.info = info
 
+    def set_dependency_dir(self, name_dir, i):
+        """
+        Set the working directories dependency for the task
+        """
+        # Controlla se l'indice è valido
+        while i >= len(self.dependency_dir):
+            self.dependency_dir.append(None)  # Aggiungi elementi vuoti fino a raggiungere l'indice
+        # indice valido
+        self.dependency_dir[i] = name_dir
+
+    def get_dependency_dir(self):
+        return self.dependency_dir
+
     def get_ip(self):
         """
         Returns the ip of the machine where the task is executed
@@ -201,7 +215,7 @@ class Task(Thread):
         :rtype: str
         """
         from dagon.remote import CloudTask
-       
+
         if isinstance(self, CloudTask):
             return self.info["public_ip"]
         else:
@@ -540,6 +554,7 @@ class Task(Thread):
         :return: command preprocessed
         :rtype: str
         """
+        ### start the creation of the context.sh script
         #print(self.workflow.cfg["globus"])
         stager = dagon.Stager(self.data_mover, self.stager_mover, self.workflow.cfg)
 
@@ -550,16 +565,16 @@ class Task(Thread):
         # Add and execute the howim script
 
         context_script = header + "cd " + self.working_dir + "/.dagon\n"
-        context_script += header + self.get_how_im_script() + "\n\n"
+        context_script += header + self.get_how_im_script() + "\n\n" #this get_hou_im_script will create the whole context script
 
-        result = self.on_execute(context_script, "context.sh")  # execute context script
+        result = self.on_execute(context_script, "context.sh", True)  # execute context script
 
 
         if result['code']:
             raise Exception(result['message'])
         self.set_info(loads(result['output']))
 
-        
+
 
         ### start the creation of the launcher.sh script
         # Create the header
@@ -668,40 +683,40 @@ class Task(Thread):
                         cmd = body.replace(dagon.Workflow.SCHEMA + arg, " workflow:///" + self.name + "/" + path.basename(file))
 
                         if type(self) == dagon.batch.Batch:
-                            parallel_task = DagonTask(taskType, taskParallelName, cmd, 
+                            parallel_task = DagonTask(taskType, taskParallelName, cmd,
                                                       transversal_workflow=self.transversal_workflow)
-                        
+
                         if type(self) == dagon.batch.RemoteBatch:
-                            parallel_task = DagonTask(taskType, taskParallelName, cmd, ssh_username=self.ssh_username, 
+                            parallel_task = DagonTask(taskType, taskParallelName, cmd, ssh_username=self.ssh_username,
                                                       keypath=self.keypath, ip=self.ip)
 
                         elif type(self) == dagon.batch.Slurm:
-                            parallel_task = DagonTask(taskType, taskParallelName, cmd, partition=self.partition, 
+                            parallel_task = DagonTask(taskType, taskParallelName, cmd, partition=self.partition,
                                                       ntasks=self.ntasks, memory=self.memory)
 
                         elif type(self) == dagon.batch.RemoteSlurm:
-                            parallel_task = DagonTask(taskType, taskParallelName, cmd, partition=self.partition, 
+                            parallel_task = DagonTask(taskType, taskParallelName, cmd, partition=self.partition,
                                                       ntasks=self.ntasks, memory=self.memory,
                                                       ssh_username=self.ssh_username, keypath=self.keypath, ip=self.ip)
 
                         elif type(self) == dagon.remote.CloudTask:
-                            parallel_task = DagonTask(taskType, taskParallelName, cmd, provider=self.provider, 
-                                                      ssh_username=self.ssh_username, key_options=self.key_options, 
-                                                      instance_id=self.instance_id, instance_flavour=self.instance_flavour, 
+                            parallel_task = DagonTask(taskType, taskParallelName, cmd, provider=self.provider,
+                                                      ssh_username=self.ssh_username, key_options=self.key_options,
+                                                      instance_id=self.instance_id, instance_flavour=self.instance_flavour,
                                                       instance_name=self.instance_name, stop_instance=self.stop_instance)
 
                         elif type(self) == dagon.docker_task.DockerTask:
-                            parallel_task = DagonTask(taskType, taskParallelName, cmd, image=self.image, 
-                                                      container_id=self.container_id, remove=self.remove, 
+                            parallel_task = DagonTask(taskType, taskParallelName, cmd, image=self.image,
+                                                      container_id=self.container_id, remove=self.remove,
                                                       volume=self.volume, transversal_workflow=self.transversal_workflow)
 
                         elif type(self) == dagon.docker_task.DockerRemoteTask:
-                            parallel_task = DagonTask(taskType, taskParallelName, cmd, image=self.image, 
-                                                      container_id=self.container_id, ssh_username=self.ssh_username, 
+                            parallel_task = DagonTask(taskType, taskParallelName, cmd, image=self.image,
+                                                      container_id=self.container_id, ssh_username=self.ssh_username,
                                                       keypath=self.keypath, ip=self.ip,
-                                                      remove=self.remove, volume=self.volume, 
+                                                      remove=self.remove, volume=self.volume,
                                                       transversal_workflow=self.transversal_workflow)
-                        
+
                         self.workflow.add_task(parallel_task)
                         new_tasks.append(parallel_task)
 
@@ -711,7 +726,7 @@ class Task(Thread):
 
                         for new_task in new_tasks:
                             next_task.add_dependency_to(new_task)
-                    
+
                     self.workflow.make_dependencies()
 
                     body = "echo \"Starting parallel tasks...\"\n"
@@ -759,11 +774,14 @@ class Task(Thread):
         :param script_name: script name
         :type script_name: str
 
+        :param local_slurm_management_files: local creation of slurm file or create slurm file in scratch directory of the task
+        :type local_slurm_management_files: bool
+
         :return: execution result
         :rtype: dict() with the execution output (str) and code (int)
         """
         # The launcher script name
-        script_name = self.working_dir + "/.dagon/" + script_name
+        #script_name = self.working_dir + "/.dagon/" + script_name #TODO see why (solved: because in the task command there is the absolute path of the program that has to be executed)
         # Create a temporary launcher script
         file = open(script_name, "w")
         file.write(script)
@@ -787,9 +805,11 @@ class Task(Thread):
         """
         script = "#! /bin/bash\n\n"
 
-        script += "CAPIO_LOG_LEVEL=-1 LD_PRELOAD=" + self.workflow.get_capio_libcapioposix_path() + "/libcapio_posix.so CAPIO_DIR=" + self.workflow.cfg['batch']['scratch_dir_base'] + " mkdir " + self.working_dir
+        #script += "CAPIO_LOG_LEVEL=-1 LD_PRELOAD=" + self.workflow.get_capio_libcapioposix_path() + "/libcapio_posix.so CAPIO_DIR=" + self.workflow.cfg['batch']['scratch_dir_base'] + " mkdir " + self.working_dir
+        script += "mkdir " + self.working_dir
 
-        self.on_execute(script, "create_dir" + self.name + ".sh")
+
+        self.on_execute(script, "create_dir" + self.name + ".sh", True)
 
     def create_working_dir(self):
         """
@@ -896,7 +916,7 @@ class Task(Thread):
 
             # Go to the next element
             pos = pos2
-    
+
         if len(self.nexts) == 0 and self.remove_scratch_dir is True:
             self.on_garbage()
 
@@ -932,7 +952,7 @@ class Task(Thread):
 
                 # Invoke the actual executor
                 start_time = time()
-                self.result = self.on_execute(launcher_script, "launcher.sh")
+                self.result = self.on_execute(launcher_script, "launcher.sh", True)
                 self.workflow.logger.debug("%s Completed in %s seconds ---" % (self.name, (time() - start_time)))
                 #print(self.result)
 

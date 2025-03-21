@@ -14,9 +14,10 @@ if __name__ == '__main__':
     # Create the orchestration workflow
     workflow = Workflow("Pipeline-Demo")
 
-    # Set the dry, se è falsa allora l'esecuzione avverrà effettivamente
+    # Set the dry, if it is false the execution will be really executed
     workflow.set_dry(False)
     BASE_PATH = os.getenv("CAPIO_BASE_PATH", "/default/path")
+    workflow.logger.debug(workflow.get_capio_dir_base())
 
     # The task a
     taskA = DagonTask(TaskType.BATCH, "A", f"{workflow.get_capio_dir_base()}/A")
@@ -44,13 +45,13 @@ if __name__ == '__main__':
 
     workflow.set_capio_server_path("/home/sperrotta/capio/build/src/server")
     workflow.set_capio_libcapioposix_path("/home/sperrotta/capio/build/src/posix")
-    workflow.set_libcapio_path("/home/sperrotta/opt/capio-v2/lib")
+    workflow.set_capio_libsyscall_intercept_path("/home/sperrotta/opt/capio-v2/lib")
     workflow.run_capio_server()
-    sleep(2)
+    sleep(1)
     workflow.is_server_capio_running()
 
     workflow.create_scratch_directory_tasks_capio()
-    sleep(5)
+    #sleep(1)
 
     jsonWorkflow = workflow.as_json()
     with open('pipeline-demo.json', 'w') as outfile:
@@ -58,7 +59,7 @@ if __name__ == '__main__':
         outfile.write(stringWorkflow)
 
 
-    #workflow.generate_script_pipeline()
+    workflow.generate_script_pipeline()
     workflow.remove_all_task_reference_workflow()
 
     #sleep(10)

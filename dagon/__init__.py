@@ -14,6 +14,7 @@ from requests.exceptions import ConnectionError
 
 from time import time, sleep
 
+import dagon
 from dagon.config import read_config
 from dagon.api import API
 from dagon.api.server import WorkflowServer
@@ -23,7 +24,6 @@ from dagon.communication.data_transfer import GlobusManager
 from dagon.communication.data_transfer import SKYCDS
 from dagon.docker_task import DockerRemoteTask
 from dagon.remote import RemoteTask
-
 
 class Status(Enum):
     """
@@ -62,7 +62,7 @@ class Workflow(object):
     :ivar is_api_available: True if the API is available
     :vartype is_api_available: str
     """
-
+#
     SCHEMA = "workflow://"
 
     def __init__(self, name, config=None, config_file='dagon.ini', max_threads=10, jsonload=None, checkpoint_file=None):
@@ -201,6 +201,7 @@ class Workflow(object):
         for task in self.tasks:
             if len(task.nexts) >= 1:
                 task.create_working_dir_capio()
+                self.logger.debug("sto creando la directory di: " + task.name)
 
     def run_capio_server(self):
         """
@@ -210,16 +211,16 @@ class Workflow(object):
         script = "#! /bin/bash\n\n"
 
         script += "CAPIO_LOG_LEVEL=-1 CAPIO_DIR=" + self.cfg['batch']['scratch_dir_base'] + " " + self.capio_server_path + "/capio_server" + " -c ./pipeline-demo-capio.json > server.log & SERVER_PID=$!\n"
-        script += "echo $SERVER_PID > ./server_pid.txt\n"
+        script += "echo $SERVER_PID > " + self.get_scratch_dir_base() + "server_pid.txt\n"
 
-        self.tasks[0].on_execute(script, "run_capio_server.sh")
+        self.tasks[0].on_execute(script, "run_capio_server.sh", True)
 
     def is_server_capio_running(self):
         """
         Verifica se il server CAPIO è in esecuzione controllando il suo PID
         nella lista di tutti i processi attivi.
         """
-        pid_file = "./server_pid.txt"
+        pid_file = self.get_scratch_dir_base() + "server_pid.txt"
 
         # Verifica se il file contenente il PID esiste
         if os.path.exists(pid_file):
@@ -258,14 +259,18 @@ class Workflow(object):
         this programs will be executed with CAPIO
         """
         script = "#! /bin/bash\n\n"
+        script += 'export CAPIO_WORKFLOW_NAME="Pipeline-Demo"\n'
         script += "start_time=$(date +%s%N)\n"
 
         for task in self.tasks:
             if task.name == "C":
                 #script += "wait $task_A_pid\nwait $task_B_pid\n" #nel caso devo aggiungere pure all'esecuzione di A e B il task_A_pid e task_B_pid=$!
-                script += "/home/sperrotta/capio/build/src/C\n"
+                script += self.get_capio_dir_base() + "/C\n"
             else:
-                arg = "CAPIO_LOG_LEVEL=-1 LD_PRELOAD=" + self.get_capio_libcapioposix_path() + "/libcapio_posix.so:" + self.get_capio_libsyscall_intercept_path() + " CAPIO_DIR=" + self.cfg['batch']['scratch_dir_base'] + " " + task.command
+                arg = 'CAPIO_LOG_LEVEL=-1 CAPIO_APP_NAME="' + task.name + '" ' + \
+                      'LD_PRELOAD=' + self.get_capio_libcapioposix_path() + "/libcapio_posix.so:" + \
+                      self.get_capio_libsyscall_intercept_path() + "/libsyscall_intercept.so:" + " CAPIO_DIR=" + \
+                      self.cfg['batch']['scratch_dir_base'] + " " + task.command
                 pos1 = arg.find(dagon.Workflow.SCHEMA, 0)
                 if pos1 != -1:
                     arg = arg.replace(dagon.Workflow.SCHEMA, "")
@@ -275,7 +280,7 @@ class Workflow(object):
 
                 dependency_dir = task.dependency_dir[0] if task.dependency_dir else task.working_dir
                 if task.name == "A":
-                    script += arg + " " + dependency_dir + " &\nsleep 1 &\n" #aggiunto per permettere ad A di eseguire il programma C in background così da poter permettere a B di fare streaming
+                    script += arg + " " + dependency_dir + " &\n" #aggiunto per permettere ad A di eseguire il programma C in background così da poter permettere a B di fare streaming
                 else:
                     script += arg + " " + dependency_dir + "\n"
 
@@ -284,10 +289,17 @@ class Workflow(object):
         #total_time=$((end_time - start_time))
         script += 'total_time=$(echo "scale=6; ($end_time - $start_time) / 1000000000" | bc)\n'
         script += 'echo "Tempo totale trascorso: $total_time secondi" > /home/sperrotta/output_dir/total_execution_time.txt\n'
-        script += "SERVER_PID=$(cat ./server_pid.txt)\n"
+        script += "SERVER_PID=$(cat " + self.get_scratch_dir_base() + "server_pid.txt)\n"
         script += "kill $SERVER_PID\n"
+        script += "rm -rf " + self.get_scratch_dir_base() + ".capio_metadata\n"
+        script += "rm -rf /dev/shm/*\n"
 
-        self.tasks[0].on_execute(script, "run_pipeline.sh")
+        self.tasks[0].on_execute(script, "run_pipeline.sh", False)
+
+    def remove_all_task_reference_workflow(self):
+        for task in self.tasks:
+            task.remove_reference_workflow()
+            self.logger.debug("Removed task: %s", task.name)
 
     def get_scratch_dir_base(self):
         """

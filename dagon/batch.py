@@ -25,7 +25,8 @@ class Batch(Task):
         :param globusendpoint: Globus endpoint ID
         :type globusendpoint: str
         """
-        Task.__init__(self, name, command, working_dir,transversal_workflow = transversal_workflow, globusendpoint=globusendpoint)
+        Task.__init__(self, name, command, working_dir, transversal_workflow=transversal_workflow,
+                      globusendpoint=globusendpoint)
 
     def __new__(cls, *args, **kwargs):
         """Create an Batch task local or remote
@@ -40,11 +41,11 @@ class Batch(Task):
            ssh_username -- username in remote machine
            keypath -- path to the private keypath
         """
-        #if "ip" in kwargs:
+        # if "ip" in kwargs:
         #    return super(Task, cls).__new__(RemoteBatch)
-        #else:
+        # else:
         #    return super(Batch, cls).__new__(cls, *args, **kwargs)
-        
+
         if "ip" in kwargs:
             return super().__new__(RemoteBatch)
         else:
@@ -72,8 +73,9 @@ class Batch(Task):
         #         code, message = 1, result.stderr
         #
         #     return {"code": code, "message": message, "output": result.stdout}
-        p = Popen(command.split(" "), stdin=PIPE, stdout=PIPE, stderr=PIPE, close_fds=True, bufsize=-1, universal_newlines=True)
-        #print "commmand",command
+        p = Popen(command.split(" "), stdin=PIPE, stdout=PIPE, stderr=PIPE, close_fds=True, bufsize=-1,
+                  universal_newlines=True)
+        # print "commmand",command
         """out, err = p.communicate()
 
         code, message = 0, ""
@@ -82,21 +84,26 @@ class Batch(Task):
         return {"code": code, "message": message, "output": out}
         """
 
-
     def on_execute(self, script, script_name):
         """
         Invoke the script specified
 
         :param script: content script
         :type script: str
+
         :param script_name: script name
         :type script_name: str
+
+
         :return: execution result
         :rtype: dict() with the execution output (str) and code (int)
         """
         # Invoke the base method
         super(Batch, self).on_execute(script, script_name)
-        return Batch.execute_command("bash " + self.working_dir + "/.dagon/" + script_name)
+        # return Batch.execute_command("bash " + self.working_dir + "/.dagon/" + script_name) #we have to execute the script in the same directory of the py script because
+        # at the beginning the scratch directory isn't already created, so it won't find the directory
+
+        return Batch.execute_command("bash " + "./" + script_name)
 
     # returns public key
     def get_public_key(self):
@@ -152,7 +159,8 @@ class RemoteBatch(RemoteTask, Batch):
         :param globusendpoint: Globus endpoint ID
         :type globusendpoint: str
         """
-        RemoteTask.__init__(self, name, command, ssh_username=ssh_username, keypath=keypath, ip=ip, working_dir=working_dir,
+        RemoteTask.__init__(self, name, command, ssh_username=ssh_username, keypath=keypath, ip=ip,
+                            working_dir=working_dir,
                             globusendpoint=globusendpoint)
 
     def on_execute(self, launcher_script, script_name):
@@ -231,13 +239,16 @@ class Slurm(Batch):
         else:
             return super().__new__(cls)
 
-    def generate_command(self, script_name):
+    def generate_command(self, script_name, local_slurm_management_files):
 
         """
         Generates the Slurm command including the partition and number of task parameters
 
         :param script_name: script to be executed
-        :type script: str
+        :type script_name: str
+
+        :param local_slurm_management_files: local creation of slurm file or create slurm file in scratch directory of the task
+        :type local_slurm_management_files: bool
 
         :return: execution result
         :rtype: dict() with the execution output (str) and code (int)
@@ -256,12 +267,22 @@ class Slurm(Batch):
             memory_text = "--mem=" + str(self.memory)
 
         # Add the slurm batch command
+        # The only change with the batch execution is this below. This is passed thorugh the terminal inline execution, so the internal part of every file .sh is equal
         # command = "sbatch " + partition_text + " " + ntasks_text + " --job-name=" + self.name + " --chdir=" + self.working_dir + " --output=" + self.working_dir + "/.dagon/stdout.txt --wait " + self.working_dir+"/.dagon/launcher.sh"
-        command = "sbatch " + partition_text + " " + ntasks_text + " " + memory_text + " -J " + self.name + " -D " \
-                  + self.working_dir + " -W " + self.working_dir + "/.dagon/" + script_name
+        """command = "sbatch " + partition_text + " " + ntasks_text + " " + memory_text + " -J " + self.name + " -D " \
+                  + self.working_dir + " -W " + self.working_dir + "/.dagon/" + script_name"""
+
+        if local_slurm_management_files is False:
+            command = "sbatch " + partition_text + " " + ntasks_text + " " + memory_text + " -J " + self.name + " -D " \
+                      + self.working_dir + " ./" + script_name
+        else:
+            command = "sbatch " + partition_text + " " + ntasks_text + " " + memory_text + " -J " + self.name + " ./" + script_name
+
+        print(command)
+
         return command
 
-    def on_execute(self, script, script_name):
+    def on_execute(self, script, script_name, local_slurm_management_files):
 
         """
         Execute a script using slurm
@@ -272,6 +293,9 @@ class Slurm(Batch):
         :param script_name: script name
         :type script_name: str
 
+        :param local_slurm_management_files: local creation of slurm file or create slurm file in scratch directory of the task
+        :type local_slurm_management_files: bool
+
         :return: execution result
         :rtype: dict() with the execution output (str) and code (int)
         """
@@ -281,7 +305,7 @@ class Slurm(Batch):
         if script_name == "context.sh":
             return Batch.execute_command(self.working_dir + "/.dagon/" + script_name)
 
-        command = self.generate_command(script_name)
+        command = self.generate_command(script_name, local_slurm_management_files)
 
         # Execute the bash command
         result = Batch.execute_command(command)
@@ -293,7 +317,8 @@ class RemoteSlurm(RemoteTask, Slurm):
     ** Represent a task that runs on a remote slurm deployment **
     """
 
-    def __init__(self, name, command, partition=None, ntasks=None, memory=None, working_dir=None, ssh_username=None, keypath=None,
+    def __init__(self, name, command, partition=None, ntasks=None, memory=None, working_dir=None, ssh_username=None,
+                 keypath=None,
                  ip=None, globusendpoint=None):
         """
         :param name: name of the task
@@ -350,4 +375,5 @@ class RemoteSlurm(RemoteTask, Slurm):
         # Execute the bash command
         result = self.ssh_connection.execute_command(command)
         return result
+
 
