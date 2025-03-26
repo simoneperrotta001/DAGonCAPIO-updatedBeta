@@ -143,6 +143,7 @@ class Task(Thread):
         self.command = command
         self.input_file = []
         self.output_file = []
+        self.local_slurm_management_files = None
         self.info = None
         self.dag_tps = None
         self.transversal_workflow = transversal_workflow
@@ -206,6 +207,17 @@ class Task(Thread):
 
     def get_dependency_dir(self):
         return self.dependency_dir
+
+    def set_local_slurm_management_files(self, local_slurm_management_files):
+
+        """
+        :param local_slurm_management_files: local creation of slurm file or create slurm file in scratch directory of the task
+        :type local_slurm_management_files: bool
+        """
+        self.local_slurm_management_files = local_slurm_management_files
+
+    def get_local_slurm_management_files(self):
+        return self.local_slurm_management_files
 
     def get_ip(self):
         """
@@ -774,9 +786,6 @@ class Task(Thread):
         :param script_name: script name
         :type script_name: str
 
-        :param local_slurm_management_files: local creation of slurm file or create slurm file in scratch directory of the task
-        :type local_slurm_management_files: bool
-
         :return: execution result
         :rtype: dict() with the execution output (str) and code (int)
         """
@@ -808,8 +817,8 @@ class Task(Thread):
         #script += "CAPIO_LOG_LEVEL=-1 LD_PRELOAD=" + self.workflow.get_capio_libcapioposix_path() + "/libcapio_posix.so CAPIO_DIR=" + self.workflow.cfg['batch']['scratch_dir_base'] + " mkdir " + self.working_dir
         script += "mkdir " + self.working_dir
 
-
-        self.on_execute(script, "create_dir" + self.name + ".sh", True)
+        self.set_local_slurm_management_files(True)
+        self.on_execute(script, "create_dir" + self.name + ".sh")
 
     def create_working_dir(self):
         """

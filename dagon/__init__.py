@@ -213,7 +213,8 @@ class Workflow(object):
         script += "CAPIO_LOG_LEVEL=-1 CAPIO_DIR=" + self.cfg['batch']['scratch_dir_base'] + " " + self.capio_server_path + "/capio_server" + " -c ./pipeline-demo-capio.json > server.log & SERVER_PID=$!\n"
         script += "echo $SERVER_PID > " + self.get_scratch_dir_base() + "server_pid.txt\n"
 
-        self.tasks[0].on_execute(script, "run_capio_server.sh", True)
+        self.tasks[0].set_local_slurm_management_files(True)
+        self.tasks[0].on_execute(script, "run_capio_server.sh")
 
     def is_server_capio_running(self):
         """
@@ -294,7 +295,8 @@ class Workflow(object):
         script += "rm -rf " + self.get_scratch_dir_base() + ".capio_metadata\n"
         script += "rm -rf /dev/shm/*\n"
 
-        self.tasks[0].on_execute(script, "run_pipeline.sh", False)
+        self.tasks[0].set_local_slurm_management_files(False)
+        self.tasks[0].on_execute(script, "run_pipeline.sh")
 
     def remove_all_task_reference_workflow(self):
         for task in self.tasks:

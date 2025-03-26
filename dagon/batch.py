@@ -84,6 +84,14 @@ class Batch(Task):
         return {"code": code, "message": message, "output": out}
         """
 
+    def set_local_slurm_management_files(self, local_slurm_management_files):
+
+        """
+        :param local_slurm_management_files: local creation of slurm file or create slurm file in scratch directory of the task
+        :type local_slurm_management_files: bool
+        """
+        super(Batch, self).set_local_slurm_management_files(local_slurm_management_files)
+
     def on_execute(self, script, script_name):
         """
         Invoke the script specified
@@ -239,7 +247,7 @@ class Slurm(Batch):
         else:
             return super().__new__(cls)
 
-    def generate_command(self, script_name, local_slurm_management_files):
+    def generate_command(self, script_name):
 
         """
         Generates the Slurm command including the partition and number of task parameters
@@ -272,6 +280,7 @@ class Slurm(Batch):
         """command = "sbatch " + partition_text + " " + ntasks_text + " " + memory_text + " -J " + self.name + " -D " \
                   + self.working_dir + " -W " + self.working_dir + "/.dagon/" + script_name"""
 
+        local_slurm_management_files = super(Batch, self).get_local_slurm_management_files()
         if local_slurm_management_files is False:
             command = "sbatch " + partition_text + " " + ntasks_text + " " + memory_text + " -J " + self.name + " -D " \
                       + self.working_dir + " ./" + script_name
@@ -282,7 +291,15 @@ class Slurm(Batch):
 
         return command
 
-    def on_execute(self, script, script_name, local_slurm_management_files):
+    def set_local_slurm_management_files(self, local_slurm_management_files):
+
+        """
+        :param local_slurm_management_files: local creation of slurm file or create slurm file in scratch directory of the task
+        :type local_slurm_management_files: bool
+        """
+        super(Batch, self).set_local_slurm_management_files(local_slurm_management_files)
+
+    def on_execute(self, script, script_name):
 
         """
         Execute a script using slurm
@@ -293,9 +310,6 @@ class Slurm(Batch):
         :param script_name: script name
         :type script_name: str
 
-        :param local_slurm_management_files: local creation of slurm file or create slurm file in scratch directory of the task
-        :type local_slurm_management_files: bool
-
         :return: execution result
         :rtype: dict() with the execution output (str) and code (int)
         """
@@ -305,7 +319,7 @@ class Slurm(Batch):
         if script_name == "context.sh":
             return Batch.execute_command(self.working_dir + "/.dagon/" + script_name)
 
-        command = self.generate_command(script_name, local_slurm_management_files)
+        command = self.generate_command(script_name)
 
         # Execute the bash command
         result = Batch.execute_command(command)
