@@ -265,12 +265,24 @@ class Workflow(object):
 
         for task in self.tasks:
             if task.name == "C":
-                #script += "wait $task_A_pid\nwait $task_B_pid\n" #nel caso devo aggiungere pure all'esecuzione di A e B il task_A_pid e task_B_pid=$!
-                script += self.get_capio_dir_base() + "/C\n"
+                #script += "wait $PID_A\nwait $PID_B\n"
+                #script += "wait $PID_A\n"
+                """script += '''
+                while [ $(ls /home/sperrotta/output_dir/out*.txt 2>/dev/null | wc -l) -lt 30 ]; do
+                echo "Aspetto che CAPIO scriva tutti i file..."
+                sleep 0.5
+                done
+                '''     
+                """
+
+                #script += "sleep(4)\n"
+                script += self.get_capio_dir_base() + "/C \
+                  > /home/sperrotta/output_dir/C_stdout.log \
+                  2> /home/sperrotta/output_dir/C_stderr.log\n"
             else:
                 arg = 'CAPIO_LOG_LEVEL=-1 CAPIO_APP_NAME="' + task.name + '" ' + \
                       'LD_PRELOAD=' + self.get_capio_libcapioposix_path() + "/libcapio_posix.so:" + \
-                      self.get_capio_libsyscall_intercept_path() + "/libsyscall_intercept.so:" + " CAPIO_DIR=" + \
+                      self.get_capio_libsyscall_intercept_path() + "/libsyscall_intercept.so" + " CAPIO_DIR=" + \
                       self.cfg['batch']['scratch_dir_base'] + " " + task.command
                 pos1 = arg.find(dagon.Workflow.SCHEMA, 0)
                 if pos1 != -1:
@@ -282,8 +294,12 @@ class Workflow(object):
                 dependency_dir = task.dependency_dir[0] if task.dependency_dir else task.working_dir
                 if task.name == "A":
                     script += arg + " " + dependency_dir + " &\n" #aggiunto per permettere ad A di eseguire il programma C in background così da poter permettere a B di fare streaming
+                    #script += "PID_" + task.name + "=$!\n"
                 else:
                     script += arg + " " + dependency_dir + "\n"
+
+                #script += "PID_" + task.name + "=$!\n"
+
 
         #script += "wait $task_C_pid\n"
         script += "end_time=$(date +%s%N)\n"
@@ -451,7 +467,7 @@ class Workflow(object):
                 task.join()
             except:
                 pass
-        
+
         completed_in = (time() - start_time)
         self.logger.info("Workflow '" + self.name + "' completed in %s seconds ---" % completed_in)
 
@@ -479,17 +495,17 @@ class Workflow(object):
         def visit(task, visited, stack):
             if task in stack:  # If the task is already in the exploration stack, we've found a cycle
                 raise Exception(f"A cycle has been found involving task {task.name}")
-            
+
             if task in visited:
                 return  # Task already visited, no cycle detected
-            
+
             # Mark the task as visited and explore the successors
             visited.add(task)
             stack.append(task)  # Add the task to the exploration stack
 
             for next_task in task.nexts:  # Explore the next tasks
                 visit(next_task, visited, stack)
-            
+
             stack.pop()  # Remove the task from the stack after exploration
 
         visited = set()  # Set of already visited tasks
@@ -628,7 +644,7 @@ class Stager(object):
             #command_tar = "tar -czvf %s %s --exclude=*.tar" % (tar_path, src_task.get_scratch_dir())
             #result = src_task.execute_command(command_tar)
 
-            #get filename from path 
+            #get filename from path
             intermediate_filename = os.path.basename(local_path)
             dst = dst_path + "/" + os.path.dirname(os.path.abspath(local_path)) + "/" + intermediate_filename
 
@@ -647,7 +663,7 @@ class Stager(object):
             if StagerMover(self.stager_mover) == StagerMover.PARALLEL:
                 cmd = "ln -sf {} $dst"
             command = command + self.generate_command(src, dst, cmd, self.stager_mover.value)
-                      
+
         # Check if the copy have to be used...
         elif data_mover == DataMover.COPY:
             # Add the copy command

@@ -4,6 +4,8 @@ from fabric.context_managers import settings, hide
 from dagon.task import Task
 from dagon.remote import RemoteTask
 from subprocess import Popen, PIPE, STDOUT
+from time import sleep
+
 
 
 class Batch(Task):
@@ -73,6 +75,11 @@ class Batch(Task):
         #         code, message = 1, result.stderr
         #
         #     return {"code": code, "message": message, "output": result.stdout}
+        """try:
+            Popen(command, shell=True, stdout=PIPE, stderr=PIPE)
+            return {"code": 0, "message": "", "output": "CAPIO Server started"}
+        except Exception as e:
+            return {"code": 1, "message": str(e), "output": ""}"""
         p = Popen(command.split(" "), stdin=PIPE, stdout=PIPE, stderr=PIPE, close_fds=True, bufsize=-1,
                   universal_newlines=True)
         # print "commmand",command
