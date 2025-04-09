@@ -144,6 +144,7 @@ class Task(Thread):
         self.input_file = []
         self.output_file = []
         self.local_slurm_management_files = None
+        self.enable_capio_execution = False
         self.info = None
         self.dag_tps = None
         self.transversal_workflow = transversal_workflow
@@ -195,15 +196,17 @@ class Task(Thread):
 
         self.info = info
 
-    def set_dependency_dir(self, name_dir, i):
+    def set_dependency_dir(self, name_dir):
         """
         Set the working directories dependency for the task
         """
-        # Controlla se l'indice è valido
+        """# Controlla se l'indice è valido
         while i >= len(self.dependency_dir):
             self.dependency_dir.append(None)  # Aggiungi elementi vuoti fino a raggiungere l'indice
         # indice valido
         self.dependency_dir[i] = name_dir
+        """
+        self.dependency_dir.append(name_dir)
 
     def get_dependency_dir(self):
         return self.dependency_dir
@@ -476,6 +479,13 @@ class Task(Thread):
             final_file_name = file_name.split('/')[-1]
             if final_file_name not in self.output_file:
                 self.output_file.append(final_file_name)
+
+        # Detect if CAPIO keyword is present
+        if "CAPIO" in self.command:
+            self.enable_capio_execution = True
+            self.command = self.command.replace("CAPIO", "").strip()
+
+        self.workflow.logger.debug("CAPIO enabled: %s", self.enable_capio_execution)
 
         # Forever unless no anymore dagon.Workflow.SCHEMA are present
         while True:

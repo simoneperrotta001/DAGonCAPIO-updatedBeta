@@ -5,6 +5,7 @@ from dagon.task import Task
 from dagon.remote import RemoteTask
 from subprocess import Popen, PIPE, STDOUT
 from time import sleep
+from subprocess import Popen, DEVNULL
 
 
 
@@ -80,8 +81,14 @@ class Batch(Task):
             return {"code": 0, "message": "", "output": "CAPIO Server started"}
         except Exception as e:
             return {"code": 1, "message": str(e), "output": ""}"""
-        p = Popen(command.split(" "), stdin=PIPE, stdout=PIPE, stderr=PIPE, close_fds=True, bufsize=-1,
-                  universal_newlines=True)
+        #p = Popen(command.split(" "), stdin=PIPE, stdout=PIPE, stderr=PIPE, close_fds=True, bufsize=-1,
+                  #universal_newlines=True)
+        p = Popen(command.split(" "),
+                  stdin=DEVNULL,
+                  stdout=DEVNULL,
+                  stderr=DEVNULL,
+                  close_fds=True,
+                  start_new_session=True)
         # print "commmand",command
         """out, err = p.communicate()
 
@@ -321,6 +328,7 @@ class Slurm(Batch):
         :rtype: dict() with the execution output (str) and code (int)
         """
 
+        #execute the on_execute of the batch class
         super(Batch, self).on_execute(script, script_name)
 
         if script_name == "context.sh":

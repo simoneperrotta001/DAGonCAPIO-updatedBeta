@@ -20,13 +20,14 @@ if __name__ == '__main__':
     workflow.logger.debug(workflow.get_capio_dir_base())
 
     # The task a
-    taskA = DagonTask(TaskType.BATCH, "A", f"{workflow.get_capio_dir_base()}/A")
+    taskA = DagonTask(TaskType.BATCH, "A", f"{workflow.get_capio_dir_base()}/A CAPIO")
 
     # The task b
     #taskB = DagonTask(TaskType.BATCH, "B", f"{BASE_PATH}/B workflow:///A")
-    taskB = DagonTask(TaskType.BATCH, "B", f"{workflow.get_capio_dir_base()}/B workflow:///A")
+    taskB = DagonTask(TaskType.BATCH, "B", f"{workflow.get_capio_dir_base()}/B workflow:///A CAPIO")
 
     taskC = DagonTask(TaskType.BATCH, "C", f"{workflow.get_capio_dir_base()}/C workflow:///B")
+
 
     # add tasks to the workflow
     workflow.add_task(taskA)
@@ -51,7 +52,8 @@ if __name__ == '__main__':
     workflow.is_server_capio_running()
 
     workflow.create_scratch_directory_tasks_capio()
-    #sleep(1)
+    #sleep(3)
+    workflow.wait_for_all_dependency_directories()
 
     jsonWorkflow = workflow.as_json()
     with open('pipeline-demo.json', 'w') as outfile:

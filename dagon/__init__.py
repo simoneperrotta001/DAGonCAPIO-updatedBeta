@@ -1,6 +1,7 @@
 import logging
 import logging.config
 import os
+import time
 import json
 from logging.config import fileConfig
 import threading
@@ -11,8 +12,6 @@ collections.MutableMapping = abc.MutableMapping
 from backports.configparser import NoSectionError
 from enum import Enum
 from requests.exceptions import ConnectionError
-
-from time import time, sleep
 
 import dagon
 from dagon.config import read_config
@@ -62,7 +61,7 @@ class Workflow(object):
     :ivar is_api_available: True if the API is available
     :vartype is_api_available: str
     """
-#
+    #Workflow schema is defined here
     SCHEMA = "workflow://"
 
     def __init__(self, name, config=None, config_file='dagon.ini', max_threads=10, jsonload=None, checkpoint_file=None):
@@ -189,7 +188,7 @@ class Workflow(object):
             if len(task.prevs) >= 1:
                 n_prevs = len(task.prevs)
                 for i in range(n_prevs):
-                    task.set_dependency_dir(task.prevs[i].get_scratch_dir(), i)
+                    task.set_dependency_dir(task.prevs[i].get_scratch_dir())
 
 
     def create_scratch_directory_tasks_capio(self):
@@ -202,6 +201,32 @@ class Workflow(object):
             if len(task.nexts) >= 1:
                 task.create_working_dir_capio()
                 self.logger.debug("sto creando la directory di: " + task.name)
+
+    def wait_for_all_dependency_directories(self, check_interval=0.5, timeout=60):
+        """
+        Waits until all dependency directories of tasks that have at least one 'next' are present.
+
+        For each task with elements in 'next', this function checks that all directories listed in
+        'dependency_dir' exist. It will poll every 'check_interval' seconds up to 'timeout' seconds.
+        """
+        self.logger.debug("Checking dependency directories for tasks with .next defined.")
+
+        for task in self.tasks:
+            if task.prevs:
+                self.logger.debug("Task '%s' has dependencies. Checking its dependency directories...", task.name)
+                for dep_dir in task.dependency_dir:
+                    self.logger.debug("Waiting for directory: %s", dep_dir)
+
+                    elapsed = 0
+                    while not os.path.exists(dep_dir):
+                        if elapsed >= timeout:
+                            raise TimeoutError(f"Timeout: directory '{dep_dir}' not found for task '{task.name}'")
+                        time.sleep(check_interval)
+                        elapsed += check_interval
+
+                    self.logger.debug("Directory found: %s", dep_dir)
+
+        self.logger.debug("All dependency directories found.")
 
     def run_capio_server(self):
         """
@@ -265,8 +290,8 @@ class Workflow(object):
 
         for task in self.tasks:
             if task.name == "C":
-                #script += "wait $PID_A\nwait $PID_B\n"
-                #script += "wait $PID_A\n"
+                # script += "wait $PID_A\nwait $PID_B\n"
+                # script += "wait $PID_A\n"
                 """script += '''
                 while [ $(ls /home/sperrotta/output_dir/out*.txt 2>/dev/null | wc -l) -lt 30 ]; do
                 echo "Aspetto che CAPIO scriva tutti i file..."
@@ -275,7 +300,7 @@ class Workflow(object):
                 '''     
                 """
 
-                #script += "sleep(4)\n"
+                # script += "sleep(4)\n"
                 script += self.get_capio_dir_base() + "/C \
                   > /home/sperrotta/output_dir/C_stdout.log \
                   2> /home/sperrotta/output_dir/C_stderr.log\n"
@@ -291,25 +316,91 @@ class Workflow(object):
                     if pos2 != -1:
                         arg = arg[:pos2 - 1]
 
+                #TODO: manage this dependency_dir[0] for manipulate evenually even more input dependency directories (in this case only the firs one is considered)
                 dependency_dir = task.dependency_dir[0] if task.dependency_dir else task.working_dir
                 if task.name == "A":
-                    script += arg + " " + dependency_dir + " &\n" #aggiunto per permettere ad A di eseguire il programma C in background così da poter permettere a B di fare streaming
-                    #script += "PID_" + task.name + "=$!\n"
+                    script += arg + " " + dependency_dir + " &\n"  # aggiunto per permettere ad A di eseguire il programma C in background così da poter permettere a B di fare streaming
+                    # script += "PID_" + task.name + "=$!\n"
                 else:
                     script += arg + " " + dependency_dir + "\n"
 
-                #script += "PID_" + task.name + "=$!\n"
+                # script += "PID_" + task.name + "=$!\n"
 
-
-        #script += "wait $task_C_pid\n"
+        # script += "wait $task_C_pid\n"
         script += "end_time=$(date +%s%N)\n"
-        #total_time=$((end_time - start_time))
+        # total_time=$((end_time - start_time))
         script += 'total_time=$(echo "scale=6; ($end_time - $start_time) / 1000000000" | bc)\n'
         script += 'echo "Tempo totale trascorso: $total_time secondi" > /home/sperrotta/output_dir/total_execution_time.txt\n'
         script += "SERVER_PID=$(cat " + self.get_scratch_dir_base() + "server_pid.txt)\n"
         script += "kill $SERVER_PID\n"
         script += "rm -rf " + self.get_scratch_dir_base() + ".capio_metadata\n"
         script += "rm -rf /dev/shm/*\n"
+
+        self.tasks[0].set_local_slurm_management_files(False)
+        self.tasks[0].on_execute(script, "run_pipeline.sh")
+
+    def generate_script_pipeline_debug(self):
+        """
+        generate a script that execute a pipeline of programs in C
+        this programs will be executed with CAPIO
+        """
+        script = "#! /bin/bash\n\n"
+        script += 'export CAPIO_WORKFLOW_NAME="Pipeline-Demo"\n'
+        script += "start_time=$(date +%s%N)\n"
+
+        self.logger.debug("Inizio generazione script pipeline CAPIO")
+
+        for task in self.tasks:
+            self.logger.debug("Preparazione task: %s", task.name)
+
+            if task.name == "C":
+                self.logger.debug("Inserisco blocco di esecuzione per C")
+
+                script += 'ls -lh /home/sperrotta/output_dir > /home/sperrotta/output_dir/list_output_dir_before_C.txt\n'
+                script += 'echo "Conteggio file out*.txt: $(ls /home/sperrotta/output_dir/out*.txt 2>/dev/null | wc -l)"\n'
+
+                # (facoltativo) attesa per evitare race condition
+                # script += "sleep 2\n"
+
+                script += self.get_capio_dir_base() + "/C \
+      > /home/sperrotta/output_dir/C_stdout.log \
+      2> /home/sperrotta/output_dir/C_stderr.log\n"
+
+            else:
+                arg = 'CAPIO_LOG_LEVEL=-1 CAPIO_APP_NAME="' + task.name + '" ' + \
+                      'LD_PRELOAD=' + self.get_capio_libcapioposix_path() + "/libcapio_posix.so:" + \
+                      self.get_capio_libsyscall_intercept_path() + "/libsyscall_intercept.so" + " CAPIO_DIR=" + \
+                      self.cfg['batch']['scratch_dir_base'] + " " + task.command
+                pos1 = arg.find(dagon.Workflow.SCHEMA, 0)
+                if pos1 != -1:
+                    arg = arg.replace(dagon.Workflow.SCHEMA, "")
+                    pos2 = arg.find("/", pos1)
+                    if pos2 != -1:
+                        arg = arg[:pos2 - 1]
+
+                dependency_dir = task.dependency_dir[0] if task.dependency_dir else task.working_dir
+
+                if task.name == "A":
+                    self.logger.debug("Eseguo A in background con working dir: %s", dependency_dir)
+                    script += arg + " " + dependency_dir + " &\n"
+                    script += "PID_A=$!\n"
+                else:
+                    self.logger.debug("Eseguo %s con working dir: %s", task.name, dependency_dir)
+                    script += arg + " " + dependency_dir + "\n"
+
+        self.logger.debug("Inserisco wait per A prima di terminare")
+        script += "wait $PID_A\n"
+
+        script += "end_time=$(date +%s%N)\n"
+        script += 'total_time=$(echo "scale=6; ($end_time - $start_time) / 1000000000" | bc)\n'
+        script += 'echo "Tempo totale trascorso: $total_time secondi" > /home/sperrotta/output_dir/total_execution_time.txt\n'
+        script += "SERVER_PID=$(cat " + self.get_scratch_dir_base() + "server_pid.txt)\n"
+        script += "kill $SERVER_PID\n"
+        script += "rm -rf " + self.get_scratch_dir_base() + ".capio_metadata\n"
+        script += "rm -rf /dev/shm/*\n"
+
+        self.logger.debug("Script finale generato:")
+        self.logger.debug("\n%s", script)
 
         self.tasks[0].set_local_slurm_management_files(False)
         self.tasks[0].on_execute(script, "run_pipeline.sh")

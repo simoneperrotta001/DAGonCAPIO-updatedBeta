@@ -50,7 +50,8 @@ if __name__ == '__main__':
     workflow.is_server_capio_running()
 
     workflow.create_scratch_directory_tasks_capio()
-    sleep(1)
+    workflow.wait_for_all_dependency_directories()
+    #sleep(2)
     workflow.generate_script_pipeline()
 
     workflow.remove_all_task_reference_workflow()
