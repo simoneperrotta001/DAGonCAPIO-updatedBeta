@@ -144,7 +144,6 @@ class Task(Thread):
         self.input_file = []
         self.output_file = []
         self.local_slurm_management_files = None
-        self.enable_capio_execution = False
         self.info = None
         self.dag_tps = None
         self.transversal_workflow = transversal_workflow
@@ -353,10 +352,11 @@ class Task(Thread):
             if self.workflow.is_api_available:
                 self.workflow.api.update_task_status(self.workflow.workflow_id, self.name, status.name)
 
-    def execute_command(self, command):
+    def execute_command(self, command, capio_enable_execution):
         """"
         Executes a command
         :param command: command to be executed
+        :param capio_enable_execution: capio enble execution parameter
         """
         pass
 
@@ -466,7 +466,6 @@ class Task(Thread):
         For each workflow:// in the command string
         1) Extract the referenced task
         2) Add a reference in the referenced task
-
         """
         # Index of the starting position
         pos = 0
@@ -480,12 +479,12 @@ class Task(Thread):
             if final_file_name not in self.output_file:
                 self.output_file.append(final_file_name)
 
-        # Detect if CAPIO keyword is present
+        # Detect if CAPIO keyword is present in the command of the task
         if "CAPIO" in self.command:
-            self.enable_capio_execution = True
+            if not self.workflow.get_enable_capio_execution():
+                self.workflow.set_enable_capio_execution(True)
+                self.workflow.logger.debug("CAPIO enabled: %s", self.workflow.get_enable_capio_execution())
             self.command = self.command.replace("CAPIO", "").strip()
-
-        self.workflow.logger.debug("CAPIO enabled: %s", self.enable_capio_execution)
 
         # Forever unless no anymore dagon.Workflow.SCHEMA are present
         while True:
@@ -589,14 +588,11 @@ class Task(Thread):
         context_script = header + "cd " + self.working_dir + "/.dagon\n"
         context_script += header + self.get_how_im_script() + "\n\n" #this get_hou_im_script will create the whole context script
 
-        result = self.on_execute(context_script, "context.sh", True)  # execute context script
-
+        result = self.on_execute(context_script, "context.sh")  # execute context script
 
         if result['code']:
             raise Exception(result['message'])
         self.set_info(loads(result['output']))
-
-
 
         ### start the creation of the launcher.sh script
         # Create the header
@@ -799,8 +795,10 @@ class Task(Thread):
         :return: execution result
         :rtype: dict() with the execution output (str) and code (int)
         """
-        # The launcher script name
-        #script_name = self.working_dir + "/.dagon/" + script_name #TODO see why (solved: because in the task command there is the absolute path of the program that has to be executed)
+        if not self.workflow.get_enable_capio_execution():
+            # The launcher script name
+            script_name = self.working_dir + "/.dagon/" + script_name
+            #print(script_name)
         # Create a temporary launcher script
         file = open(script_name, "w")
         file.write(script)
@@ -961,6 +959,7 @@ class Task(Thread):
                 "name": self.name
             }
 
+            #print(self.command)
             # Apply some command pre processing
             launcher_script = self.pre_process_command(self.command)
             # Apply some command post processing
@@ -971,7 +970,8 @@ class Task(Thread):
 
                 # Invoke the actual executor
                 start_time = time()
-                self.result = self.on_execute(launcher_script, "launcher.sh", True)
+
+                self.result = self.on_execute(launcher_script, "launcher.sh")
                 self.workflow.logger.debug("%s Completed in %s seconds ---" % (self.name, (time() - start_time)))
                 #print(self.result)
 

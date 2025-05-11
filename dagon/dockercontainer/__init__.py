@@ -95,7 +95,7 @@ class DockerRemoteClient(DockerClient):
                 hide('warnings', 'running', 'stdout', 'stderr'),
                 warn_only=True
         ):
-            result = self.ssh.execute_command(command)
+            result = self.ssh.execute_command(command, )
             return result
 
 

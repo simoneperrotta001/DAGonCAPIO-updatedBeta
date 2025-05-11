@@ -35,30 +35,31 @@ if __name__ == '__main__':
 
     workflow.make_dependencies()
 
-    #we have to create the working dirs before the execute (that will be not done with CAPIO), for the correct result of the json_CAPIO
-    for task in workflow.tasks:
-        task.create_working_dir()
+    if not workflow.get_enable_capio_execution():
+        #we have to create the working dirs before the execute (that will be not done with CAPIO), for the correct result of the json_CAPIO
+        for task in workflow.tasks:
+            task.create_working_dir()
 
-    jsonCapioWorkflow = workflow.as_json_capio()
-    with open('pipeline-demo-capio.json', 'w') as outfile:
-        stringWorkflow = json.dumps(jsonCapioWorkflow, sort_keys=False, indent=2)
-        outfile.write(stringWorkflow)
+        jsonCapioWorkflow = workflow.as_json_capio()
+        with open('pipeline-demo-capio.json', 'w') as outfile:
+            stringWorkflow = json.dumps(jsonCapioWorkflow, sort_keys=False, indent=2)
+            outfile.write(stringWorkflow)
 
-    jsonWorkflow = workflow.as_json()
-    with open('dataflow-demo.json', 'w') as outfile:
-        stringWorkflow = json.dumps(jsonWorkflow, sort_keys=True, indent=2)
-        outfile.write(stringWorkflow)
+        jsonWorkflow = workflow.as_json()
+        with open('dataflow-demo.json', 'w') as outfile:
+            stringWorkflow = json.dumps(jsonWorkflow, sort_keys=True, indent=2)
+            outfile.write(stringWorkflow)
 
-    # run the workflow
-    workflow.run()
+        # run the workflow
+        workflow.run()
 
-    if workflow.get_dry() is False:
-        # set the result filename
-        result_filename = taskD.get_scratch_dir() + "/f3.txt"
-        while not os.path.exists(result_filename):
-            time.sleep(1)
+        if workflow.get_dry() is False:
+            # set the result filename
+            result_filename = taskD.get_scratch_dir() + "/f3.txt"
+            while not os.path.exists(result_filename):
+                time.sleep(1)
 
-        # get the results
-        with open(result_filename, "r") as infile:
-            result = infile.readlines()
-            print(result)
+            # get the results
+            with open(result_filename, "r") as infile:
+                result = infile.readlines()
+                print(result)

@@ -7,8 +7,6 @@ from subprocess import Popen, PIPE, STDOUT
 from time import sleep
 from subprocess import Popen, DEVNULL
 
-
-
 class Batch(Task):
     """
     **Executes a Batch task**
@@ -55,12 +53,60 @@ class Batch(Task):
             return super().__new__(cls)
 
     @staticmethod
-    def execute_command(command):
+    def execute_command(command, capio_enable_execution, **kwargs):
         """
         Executes a local command
 
         :param command: command to be executed
         :type command: str
+        :return: execution result
+        :rtype: dict() with the execution output (str), code (int) and error (str)
+        :param capio_enable_execution: capio enabled execution  or not
+        """
+        # Execute the bash command
+        # with settings(
+        #         hide('warnings', 'running', 'stdout', 'stderr'),
+        #         warn_only=True
+        # ):
+        #     result = local(command, capture=True)
+        #     # check for an error
+        #     code, message = 0, ""
+        #     if len(result.stderr):
+        #         code, message = 1, result.stderr
+        #
+        #     return {"code": code, "message": message, "output": result.stdout}
+        """try:
+            Popen(command, shell=True, stdout=PIPE, stderr=PIPE)
+            return {"code": 0, "message": "", "output": "CAPIO Server started"}
+        except Exception as e:
+            return {"code": 1, "message": str(e), "output": ""}"""
+        # print(capio_enable_execution)
+        if capio_enable_execution:
+            p = Popen(command.split(" "),
+                      stdin=DEVNULL,
+                      stdout=DEVNULL,
+                      stderr=DEVNULL,
+                      close_fds=True,
+                      start_new_session=True)
+        else:
+            # print(command)
+            p = Popen(command.split(" "), stdin=PIPE, stdout=PIPE, stderr=PIPE, close_fds=True, bufsize=-1,
+                      universal_newlines=True)
+
+            out, err = p.communicate()
+
+            code, message = 0, ""
+            if len(err):
+                code, message = 1, err
+            return {"code": code, "message": message, "output": out}
+
+    def execute_command_instance(self, command, capio_enable_execution):
+        """
+        Executes a local command
+
+        :param command: command to be executed
+        :type command: str
+        :param capio_enable_execution: capio enabled or not
         :return: execution result
         :rtype: dict() with the execution output (str), code (int) and error (str)
         """
@@ -81,22 +127,14 @@ class Batch(Task):
             return {"code": 0, "message": "", "output": "CAPIO Server started"}
         except Exception as e:
             return {"code": 1, "message": str(e), "output": ""}"""
-        #p = Popen(command.split(" "), stdin=PIPE, stdout=PIPE, stderr=PIPE, close_fds=True, bufsize=-1,
-                  #universal_newlines=True)
-        p = Popen(command.split(" "),
-                  stdin=DEVNULL,
-                  stdout=DEVNULL,
-                  stderr=DEVNULL,
-                  close_fds=True,
-                  start_new_session=True)
-        # print "commmand",command
-        """out, err = p.communicate()
+        # p = Popen(command.split(" "), stdin=PIPE, stdout=PIPE, stderr=PIPE, close_fds=True, bufsize=-1,
+        # universal_newlines=True)
 
-        code, message = 0, ""
-        if len(err):
-            code, message = 1, err
-        return {"code": code, "message": message, "output": out}
-        """
+        # if not self.workflow.get_enable_capio_execution():
+        # print(command)
+        return self.execute_command(command, capio_enable_execution)
+        # else:
+        # return self.execute_command(command, True)
 
     def set_local_slurm_management_files(self, local_slurm_management_files):
 
@@ -120,12 +158,11 @@ class Batch(Task):
         :return: execution result
         :rtype: dict() with the execution output (str) and code (int)
         """
-        # Invoke the base method
         super(Batch, self).on_execute(script, script_name)
-        # return Batch.execute_command("bash " + self.working_dir + "/.dagon/" + script_name) #we have to execute the script in the same directory of the py script because
-        # at the beginning the scratch directory isn't already created, so it won't find the directory
-
-        return Batch.execute_command("bash " + "./" + script_name)
+        if not self.workflow.get_enable_capio_execution():
+            return self.execute_command_instance("bash " + self.working_dir + "/.dagon/" + script_name, False)
+        else:
+            return self.execute_command_instance("bash " + "./" + script_name, True)
 
     # returns public key
     def get_public_key(self):
@@ -136,7 +173,7 @@ class Batch(Task):
         :rtype: str with the public key
         """
         command = "cat " + self.working_dir + "/.dagon/ssh_key.pub"
-        result = Batch.execute_command(command)
+        result = Batch.execute_command(command, )
         return result['output']
 
     def add_public_key(self, key):
@@ -149,7 +186,7 @@ class Batch(Task):
         :rtype: dict() with the execution output (str) and code (int)
         """
         command = "echo " + key.strip() + "| cat >> ~/.ssh/authorized_keys"
-        result = Batch.execute_command(command)
+        result = Batch.execute_command(command, )
         return result
 
 
@@ -200,7 +237,7 @@ class RemoteBatch(RemoteTask, Batch):
         """
         # Invoke the base method
         RemoteTask.on_execute(self, launcher_script, script_name)
-        result = self.ssh_connection.execute_command("bash " + self.working_dir + "/.dagon/" + script_name)
+        result = self.ssh_connection.execute_command("bash " + self.working_dir + "/.dagon/" + script_name, )
         return result
 
 
@@ -301,7 +338,7 @@ class Slurm(Batch):
         else:
             command = "sbatch " + partition_text + " " + ntasks_text + " " + memory_text + " -J " + self.name + " ./" + script_name
 
-        print(command)
+        # print(command)
 
         return command
 
@@ -327,17 +364,20 @@ class Slurm(Batch):
         :return: execution result
         :rtype: dict() with the execution output (str) and code (int)
         """
-
-        #execute the on_execute of the batch class
+        # execute the on_execute of the batch class
         super(Batch, self).on_execute(script, script_name)
 
-        if script_name == "context.sh":
-            return Batch.execute_command(self.working_dir + "/.dagon/" + script_name)
+        if script_name == "context.sh" or script_name == "launcher.sh":
+            return Batch.execute_command(self.working_dir + "/.dagon/" + script_name, capio_enable_execution=None)
 
         command = self.generate_command(script_name)
 
-        # Execute the bash command
-        result = Batch.execute_command(command)
+        if not self.workflow.get_enable_capio_execution():
+            # Execute the bash command
+            result = self.execute_command_instance(command, False)
+        else:
+            result = self.execute_command_instance(command, True)
+
         return result
 
 
@@ -398,11 +438,9 @@ class RemoteSlurm(RemoteTask, Slurm):
 
         RemoteTask.on_execute(self, script, script_name)
         if script_name == "context.sh":
-            return self.ssh_connection.execute_command("bash " + self.working_dir + "/.dagon/" + script_name)
+            return self.ssh_connection.execute_command("bash " + self.working_dir + "/.dagon/" + script_name, )
 
         command = self.generate_command(script_name)
         # Execute the bash command
-        result = self.ssh_connection.execute_command(command)
+        result = self.ssh_connection.execute_command(command, )
         return result
-
-

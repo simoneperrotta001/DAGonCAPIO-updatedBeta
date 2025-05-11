@@ -96,6 +96,7 @@ class Workflow(object):
         self.capio_server_path = None
         self.capio_libcapioposix_path = None
         self.capio_libsyscall_intercept_path = None
+        self.enable_capio_execution = False
         self.checkpoints = {}
         self.workflow_id = 0
         self.is_api_available = False
@@ -161,6 +162,9 @@ class Workflow(object):
     def set_capio_libsyscall_intercept_path(self, path):
         self.capio_libsyscall_intercept_path = path
 
+    def set_enable_capio_execution(self, enable_capio):
+        self.enable_capio_execution = enable_capio
+
     def get_capio_server_path(self):
         return self.capio_server_path
 
@@ -169,6 +173,9 @@ class Workflow(object):
 
     def get_capio_libsyscall_intercept_path(self):
         return self.capio_libsyscall_intercept_path
+
+    def get_enable_capio_execution(self):
+        return self.enable_capio_execution
 
     def create_scratch_directory_names_tasks_capio(self):
         """
@@ -546,7 +553,7 @@ class Workflow(object):
         else:
             self.logger.debug("Running workflow: %s", self.name)
 
-        start_time = time()
+        start_time = time.time()
         for task in self.tasks:
             try:
                 task.start()
@@ -559,7 +566,7 @@ class Workflow(object):
             except:
                 pass
 
-        completed_in = (time() - start_time)
+        completed_in = (time.time() - start_time)
         self.logger.info("Workflow '" + self.name + "' completed in %s seconds ---" % completed_in)
 
         if self.checkpoint_file is not None:
@@ -788,7 +795,7 @@ class Stager(object):
                 dst_task.add_public_key(key)
 
                 command_mkdir = "mkdir -p " + dst_path + "/" + os.path.dirname(local_path) + "\n\n"
-                res = dst_task.ssh_connection.execute_command(command_mkdir)
+                res = dst_task.ssh_connection.execute_command(command_mkdir, capio_enable_execution=None)
 
                 if res['code']:
                     raise Exception("Couldn't create directory %s" % dst_path + "/" + os.path.dirname(local_path))
@@ -801,7 +808,7 @@ class Stager(object):
                                 "/.dagon/ssh_key -r " + " {} " + \
                                 dst_task.get_user() + "@" + dst_task.get_ip() + ":$dst \n\n"
                 command_local = self.generate_command(src, dst, cmd, self.stager_mover.value)
-                res = Batch.execute_command(command_local)
+                res = Batch.execute_command(command_local, capio_enable_execution=None)
 
                 if res['code']:
                     raise Exception("Couldn't copy data from %s to %s" % (src_task.get_ip(), dst_task.get_ip()))

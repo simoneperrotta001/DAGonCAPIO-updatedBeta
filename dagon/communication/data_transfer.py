@@ -191,11 +191,11 @@ class SKYCDS:
                   (
                   task.get_scratch_dir(), path, SKYCDS.CLIENT_TOKEN, SKYCDS.API_TOKEN, SKYCDS.CATALOG_TOKEN, mode, path,
                   str_encryption)
-        result = task.execute_command(command)
+        result = task.execute_command(command, )
         return result
 
     def download_data(self, task, path):
         command = "mkdir -p %s && docker exec -i client java -jar -Xmx3g -Xmx3g CP-ABE_ST_Dow.jar %s %s %s %s 2 1 test %s" % \
                   (path, SKYCDS.CLIENT_TOKEN, SKYCDS.API_TOKEN, SKYCDS.CATALOG_TOKEN, SKYCDS.IP_SKYCDS, path)
-        result = task.execute_command(command)
+        result = task.execute_command(command, )
         return result

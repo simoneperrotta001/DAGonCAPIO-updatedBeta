@@ -161,7 +161,7 @@ class DockerTask(Batch):
 
         # Invoke the base method
         Task.on_execute(self, script, script_name)
-        return Batch.execute_command("bash " + self.working_dir + "/.dagon/" + script_name)
+        return Batch.execute_command("bash " + self.working_dir + "/.dagon/" + script_name, )
         # return self.docker_client.exec_command(self.working_dir + "/.dagon/" + script_name)"""
 
     def on_garbage(self):
@@ -234,7 +234,7 @@ class DockerRemoteTask(RemoteTask, DockerTask):
         """
 
         RemoteTask.on_execute(self, launcher_script, script_name)
-        return self.ssh_connection.execute_command("bash " + self.working_dir + "/.dagon/" + script_name)
+        return self.ssh_connection.execute_command("bash " + self.working_dir + "/.dagon/" + script_name, )
 
     def on_garbage(self):
         """
