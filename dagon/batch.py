@@ -53,7 +53,7 @@ class Batch(Task):
             return super().__new__(cls)
 
     @staticmethod
-    def execute_command(command, capio_enable_execution, **kwargs):
+    def execute_command(command, enable_capio_execution, **kwargs):
         """
         Executes a local command
 
@@ -61,7 +61,7 @@ class Batch(Task):
         :type command: str
         :return: execution result
         :rtype: dict() with the execution output (str), code (int) and error (str)
-        :param capio_enable_execution: capio enabled execution  or not
+        :param enable_capio_execution: capio enabled execution  or not
         """
         # Execute the bash command
         # with settings(
@@ -80,8 +80,8 @@ class Batch(Task):
             return {"code": 0, "message": "", "output": "CAPIO Server started"}
         except Exception as e:
             return {"code": 1, "message": str(e), "output": ""}"""
-        # print(capio_enable_execution)
-        if capio_enable_execution:
+        # print(enable_capio_execution)
+        if enable_capio_execution:
             p = Popen(command.split(" "),
                       stdin=DEVNULL,
                       stdout=DEVNULL,
@@ -100,13 +100,13 @@ class Batch(Task):
                 code, message = 1, err
             return {"code": code, "message": message, "output": out}
 
-    def execute_command_instance(self, command, capio_enable_execution):
+    def execute_command_instance(self, command, enable_capio_execution):
         """
         Executes a local command
 
         :param command: command to be executed
         :type command: str
-        :param capio_enable_execution: capio enabled or not
+        :param enable_capio_execution: capio enabled or not
         :return: execution result
         :rtype: dict() with the execution output (str), code (int) and error (str)
         """
@@ -132,7 +132,7 @@ class Batch(Task):
 
         # if not self.workflow.get_enable_capio_execution():
         # print(command)
-        return self.execute_command(command, capio_enable_execution)
+        return self.execute_command(command, enable_capio_execution)
         # else:
         # return self.execute_command(command, True)
 
@@ -368,7 +368,7 @@ class Slurm(Batch):
         super(Batch, self).on_execute(script, script_name)
 
         if script_name == "context.sh" or script_name == "launcher.sh":
-            return Batch.execute_command(self.working_dir + "/.dagon/" + script_name, capio_enable_execution=None)
+            return Batch.execute_command(self.working_dir + "/.dagon/" + script_name, enable_capio_execution=None)
 
         command = self.generate_command(script_name)
 

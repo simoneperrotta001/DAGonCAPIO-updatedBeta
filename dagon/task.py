@@ -352,11 +352,11 @@ class Task(Thread):
             if self.workflow.is_api_available:
                 self.workflow.api.update_task_status(self.workflow.workflow_id, self.name, status.name)
 
-    def execute_command(self, command, capio_enable_execution):
+    def execute_command(self, command, enable_capio_execution):
         """"
         Executes a command
         :param command: command to be executed
-        :param capio_enable_execution: capio enble execution parameter
+        :param enable_capio_execution: capio enble execution parameter
         """
         pass
 
@@ -484,7 +484,7 @@ class Task(Thread):
             if not self.workflow.get_enable_capio_execution():
                 self.workflow.set_enable_capio_execution(True)
                 self.workflow.logger.debug("CAPIO enabled: %s", self.workflow.get_enable_capio_execution())
-            self.command = self.command.replace("CAPIO", "").strip()
+            #self.command = self.command.replace("CAPIO", "").strip()
 
         # Forever unless no anymore dagon.Workflow.SCHEMA are present
         while True:

@@ -308,14 +308,24 @@ class Workflow(object):
                 """
 
                 # script += "sleep(4)\n"
+                #It is necessary to do this because without the writing of C in these files for reducing the buffering, without permitting to C to interfere with the A and B work
                 script += self.get_capio_dir_base() + "/C \
                   > /home/sperrotta/output_dir/C_stdout.log \
                   2> /home/sperrotta/output_dir/C_stderr.log\n"
             else:
+                # Build the argument string with all CAPIO-related variables
                 arg = 'CAPIO_LOG_LEVEL=-1 CAPIO_APP_NAME="' + task.name + '" ' + \
                       'LD_PRELOAD=' + self.get_capio_libcapioposix_path() + "/libcapio_posix.so:" + \
                       self.get_capio_libsyscall_intercept_path() + "/libsyscall_intercept.so" + " CAPIO_DIR=" + \
-                      self.cfg['batch']['scratch_dir_base'] + " " + task.command
+                      self.cfg['batch']['scratch_dir_base']
+
+                # Remove "CAPIO" only from the task.command without affecting other CAPIO variables
+                clean_command = task.command.replace("CAPIO", "")
+
+                # Combine the cleaned command with the other CAPIO-related arguments
+                arg += " " + clean_command
+
+                # Check and remove "dagon.Workflow.SCHEMA" if present in the argument
                 pos1 = arg.find(dagon.Workflow.SCHEMA, 0)
                 if pos1 != -1:
                     arg = arg.replace(dagon.Workflow.SCHEMA, "")
@@ -323,13 +333,14 @@ class Workflow(object):
                     if pos2 != -1:
                         arg = arg[:pos2 - 1]
 
+
                 #TODO: manage this dependency_dir[0] for manipulate evenually even more input dependency directories (in this case only the firs one is considered)
-                dependency_dir = task.dependency_dir[0] if task.dependency_dir else task.working_dir
+                dependency_dirs = " ".join(task.dependency_dir) if task.dependency_dir else task.working_dir
                 if task.name == "A":
-                    script += arg + " " + dependency_dir + " &\n"  # aggiunto per permettere ad A di eseguire il programma C in background così da poter permettere a B di fare streaming
+                    script += arg + " " + dependency_dirs + " &\n"  # aggiunto per permettere ad A di eseguire il programma C in background così da poter permettere a B di fare streaming
                     # script += "PID_" + task.name + "=$!\n"
                 else:
-                    script += arg + " " + dependency_dir + "\n"
+                    script += arg + " " + dependency_dirs + "\n"
 
                 # script += "PID_" + task.name + "=$!\n"
 
@@ -384,6 +395,11 @@ class Workflow(object):
                     pos2 = arg.find("/", pos1)
                     if pos2 != -1:
                         arg = arg[:pos2 - 1]
+                pos3 = arg.find("CAPIO", 0)
+                #print(arg)
+                if pos3 != -1:
+                    arg = arg.replace("CAPIO", "").strip()
+                    #print(arg)
 
                 dependency_dir = task.dependency_dir[0] if task.dependency_dir else task.working_dir
 
@@ -795,7 +811,7 @@ class Stager(object):
                 dst_task.add_public_key(key)
 
                 command_mkdir = "mkdir -p " + dst_path + "/" + os.path.dirname(local_path) + "\n\n"
-                res = dst_task.ssh_connection.execute_command(command_mkdir, capio_enable_execution=None)
+                res = dst_task.ssh_connection.execute_command(command_mkdir, enable_capio_execution=None)
 
                 if res['code']:
                     raise Exception("Couldn't create directory %s" % dst_path + "/" + os.path.dirname(local_path))
@@ -808,7 +824,7 @@ class Stager(object):
                                 "/.dagon/ssh_key -r " + " {} " + \
                                 dst_task.get_user() + "@" + dst_task.get_ip() + ":$dst \n\n"
                 command_local = self.generate_command(src, dst, cmd, self.stager_mover.value)
-                res = Batch.execute_command(command_local, capio_enable_execution=None)
+                res = Batch.execute_command(command_local, enable_capio_execution=None)
 
                 if res['code']:
                     raise Exception("Couldn't copy data from %s to %s" % (src_task.get_ip(), dst_task.get_ip()))
