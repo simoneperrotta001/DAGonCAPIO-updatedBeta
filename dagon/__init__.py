@@ -292,11 +292,12 @@ class Workflow(object):
         this programs will be executed with CAPIO
         """
         script = "#! /bin/bash\n\n"
-        script += 'export CAPIO_WORKFLOW_NAME="Pipeline-Demo"\n'
+        script += 'export CAPIO_WORKFLOW_NAME=' + self.name + '\n'
         script += "start_time=$(date +%s%N)\n"
 
         for task in self.tasks:
-            if task.name == "C":
+            # if not task.get_enable_capio_execution():
+            if task.name == 'C':
                 # script += "wait $PID_A\nwait $PID_B\n"
                 # script += "wait $PID_A\n"
                 """script += '''
@@ -306,9 +307,18 @@ class Workflow(object):
                 done
                 '''     
                 """
-
+                """arg = task.command
+                pos1 = arg.find(dagon.Workflow.SCHEMA, 0)
+                if pos1 != -1:
+                    arg = arg.replace(dagon.Workflow.SCHEMA, "")
+                    pos2 = arg.find("/", pos1)
+                    if pos2 != -1:
+                        arg = arg[:pos2 - 1]
+                script += arg + " \
+                  > /home/sperrotta/output_dir/C_stdout.log \
+                  2> /home/sperrotta/output_dir/C_stderr.log\n"""
                 # script += "sleep(4)\n"
-                #It is necessary to do this because without the writing of C in these files for reducing the buffering, without permitting to C to interfere with the A and B work
+                # It is necessary to do this because without the writing of C in these files for reducing the buffering, without permitting to C to interfere with the A and B work
                 script += self.get_capio_dir_base() + "/C \
                   > /home/sperrotta/output_dir/C_stdout.log \
                   2> /home/sperrotta/output_dir/C_stderr.log\n"
@@ -333,8 +343,7 @@ class Workflow(object):
                     if pos2 != -1:
                         arg = arg[:pos2 - 1]
 
-
-                #TODO: manage this dependency_dir[0] for manipulate evenually even more input dependency directories (in this case only the firs one is considered)
+                # TODO: manage this dependency_dir[0] for manipulate evenually even more input dependency directories (in this case only the firs one is considered)
                 dependency_dirs = " ".join(task.dependency_dir) if task.dependency_dir else task.working_dir
                 if task.name == "A":
                     script += arg + " " + dependency_dirs + " &\n"  # aggiunto per permettere ad A di eseguire il programma C in background così da poter permettere a B di fare streaming
@@ -546,7 +555,7 @@ class Workflow(object):
         """
 
         jsonWorkflowCapio = {
-            "name": "Pipeline-Demo",
+            "name": self.name,
             "IO_Graph": []
         }
 
@@ -880,3 +889,5 @@ if [ "${{#job_ids[@]}}" -gt 0 ]; then
     done
 fi
         """.format(src, dst, mode, self.cfg["batch"]["threads"], self.cfg["slurm"]["partition"], cmd)
+
+

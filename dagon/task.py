@@ -139,6 +139,7 @@ class Task(Thread):
         self.workflow = None
         self.set_status(dagon.Status.READY)
         self.working_dir = working_dir
+        self.enable_capio_execution = False
         self.dependency_dir = []
         self.command = command
         self.input_file = []
@@ -206,6 +207,12 @@ class Task(Thread):
         self.dependency_dir[i] = name_dir
         """
         self.dependency_dir.append(name_dir)
+
+    def set_enable_capio_execution(self, enable_capio):
+        self.enable_capio_execution = enable_capio
+
+    def get_enable_capio_execution(self):
+        return self.enable_capio_execution
 
     def get_dependency_dir(self):
         return self.dependency_dir
@@ -485,6 +492,9 @@ class Task(Thread):
                 self.workflow.set_enable_capio_execution(True)
                 self.workflow.logger.debug("CAPIO enabled: %s", self.workflow.get_enable_capio_execution())
             #self.command = self.command.replace("CAPIO", "").strip()
+            if not self.get_enable_capio_execution():
+                self.set_enable_capio_execution(True)
+                self.workflow.logger.debug("CAPIO enabled for task %s: %s", self.name, self.get_enable_capio_execution())
 
         # Forever unless no anymore dagon.Workflow.SCHEMA are present
         while True:

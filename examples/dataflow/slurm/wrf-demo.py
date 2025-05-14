@@ -5,6 +5,34 @@ import os.path
 import time
 from time import sleep
 
+
+"""
+SLURM
+There are a tot of file that will be used as description of data for that day, for the coherence of the data
+There are 3 domains, each domain contains a file for each hour, so:
+-d01 for the 00:00, d02 for the 00:00 and d03 for the 00:00;
+-d01 for the 01:00, d02 for the 01:00, d03 for the 01:00
+...
+The publish will take for each domain the current hour, the previous hour and the one of the 00:00 of that day
+
+Step 1: Copy the files of wrf of that hour to the scratch directory of the task A (so number of domains file 
+will be copied in the scratch directory).
+Step 2: let the publish begin the streaming on the files that has been copied (so discarding the first 3 hours, 
+and taking the current hour, the previous hour and the 00:00 hour (automatically)). The publish has to be modifed 
+and executed with the specification of the number of hours per domain, the number of domain. So there will be a .c 
+file, that will calculate the number of expected files, and execute the publish.
+The publish will be executed for each domain, and it is necessary to pass to it the 3 files of that domain of the 
+related hours (the current, previous and 00:00).
+The publish will take the files in input from the scratch directory of wrf (Task A) and will publish after the execution
+in its scratch directory (Task B -> so 2 tasks).
+
+
+The .c file will have the same structure of the B.c but before open the file in the ouptut directory, we will call the publish.
+So we will only setup the space for the name of the file, and the name of the file , and subsequently pass to the publish as
+a parameter.
+"""
+
+
 # Check if this is the main
 if __name__ == '__main__':
 

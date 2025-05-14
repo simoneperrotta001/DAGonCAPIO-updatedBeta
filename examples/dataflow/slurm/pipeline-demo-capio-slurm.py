@@ -9,7 +9,7 @@ from time import sleep
 if __name__ == '__main__':
 
     # Create the orchestration workflow
-    workflow = Workflow("DataFlow-Demo-Slurm")
+    workflow = Workflow("Pipeline-Demo-Slurm")
 
     # Set the dry, if it is false the execution will be really executed
     workflow.set_dry(False)
@@ -21,7 +21,7 @@ if __name__ == '__main__':
                       partition="gpu", ntasks=1, memory=8192)
 
     # The task b
-    taskB = DagonTask(TaskType.SLURM, "B", f"{workflow.get_capio_dir_base()}/B workflow:///A",
+    taskB = DagonTask(TaskType.SLURM, "B", f"{workflow.get_capio_dir_base()}/B workflow:///A CAPIO",
                       partition="gpu", ntasks=1, memory=8192)
 
     # The task c
