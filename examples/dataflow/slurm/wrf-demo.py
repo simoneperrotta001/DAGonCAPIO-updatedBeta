@@ -13,10 +13,12 @@ There are 3 domains, each domain contains a file for each hour, so:
 -d01 for the 00:00, d02 for the 00:00 and d03 for the 00:00;
 -d01 for the 01:00, d02 for the 01:00, d03 for the 01:00
 ...
-The publish will take for each domain the current hour, the previous hour and the one of the 00:00 of that day
+The publish will take for each domain the current hour, the previous hour and the one of the 00:00 of that day, 
+but,the 00:00 of the successive days (excluding the first one) will take the 00:00 of the previous day when we 
+talk of taking the 00:00 of that day (so 25 total files per domain per day)
 
-Step 1: Copy the files of wrf of that hour to the scratch directory of the task A (so number of domains file 
-will be copied in the scratch directory).
+Step 1: Copy the files of wrf of that hour from the path /storage/... to the scratch directory of the task A 
+every 3 seconds (so number of domains file will be copied in the scratch directory).
 Step 2: let the publish begin the streaming on the files that has been copied (so discarding the first 3 hours, 
 and taking the current hour, the previous hour and the 00:00 hour (automatically)). The publish has to be modifed 
 and executed with the specification of the number of hours per domain, the number of domain. So there will be a .c 
@@ -29,7 +31,9 @@ in its scratch directory (Task B -> so 2 tasks).
 
 The .c file will have the same structure of the B.c but before open the file in the ouptut directory, we will call the publish.
 So we will only setup the space for the name of the file, and the name of the file , and subsequently pass to the publish as
-a parameter.
+a parameter. (not used anymore this .c logic)
+
+The bash file that calls the python publish file has to be already existed in the ccmma directory.
 """
 
 
@@ -37,7 +41,7 @@ a parameter.
 if __name__ == '__main__':
 
     # Create the orchestration workflow
-    workflow = Workflow("DataFlow-Demo-Slurm")
+    workflow = Workflow("WRF-Demo-Slurm")
 
     # Set the dry, if it is false the execution will be really executed
     workflow.set_dry(False)
@@ -45,18 +49,23 @@ if __name__ == '__main__':
     workflow.logger.debug(workflow.get_capio_dir_base())
 
     # The task a
-    cmdWrf = "{}/wrf {} workflow:///makeInputNameList_{}/namelist.input workflow:///real/wrfbdy\* workflow:///real/wrfinput\* {}".format(
+    """cmdWrf = "{}/wrf {} workflow:///makeInputNameList_{}/namelist.input workflow:///real/wrfbdy\* workflow:///real/wrfinput\* {}".format(
         command_dir_base_wrf, i_date, str(day), restartFile)
     taskWrf = DagonTask(TaskType.SLURM, "wrf_" + str(day), cmdWrf, partition="hxcpu", memory=128000, time="2:30:00",
-                        nodes=6, ntasks_per_node=48)
+                        nodes=6, ntasks_per_node=48)"""
+
+    taskA = DagonTask(TaskType.SLURM, "A", f"{workflow.get_capio_dir_base()}/execute_wrf_publish/run_cp_1.sh CAPIO",
+                      partition="gpu", ntasks=1, memory=8192)
 
     # The task b
-    cmdPublishWrf = "{}/publishWrfOutput.dist {} {} {} workflow:///wrf_{}/{} workflow:///wrf_{}/{} workflow:///wrf_{}/{}".format(
+    """cmdPublishWrf = "{}/publishWrfOutput.dist {} {} {} workflow:///wrf_{}/{} workflow:///wrf_{}/{} workflow:///wrf_{}/{}".format(
         command_dir_base_wrf, i_date, wrf_model, skip_hours_wrf, str(day), curr_file, str(day), prev_file, str(day),
         zero_file)
     taskPublishWrf = DagonTask(TaskType.SLURM, "publishWrfOutput_{}_{}".format(str(day), curr_file), cmdPublishWrf,
-                               partition="xxcpu", ntasks=1, memory=8192)
+                               partition="xxcpu", ntasks=1, memory=8192)"""
 
+    taskB = DagonTask(TaskType.SLURM, "B", f"{workflow.get_capio_dir_base()}/execute_wrf_publish/run_publish.sh workflow:///A CAPIO",
+                      partition="gpu", ntasks=1, memory=8192)
 
     # add tasks to the workflow
     workflow.add_task(taskA)
@@ -68,13 +77,13 @@ if __name__ == '__main__':
         workflow.create_scratch_directory_names_tasks_capio()
 
         jsonCapioWorkflow = workflow.as_json_capio()
-        with open('pipeline-demo-capio.json', 'w') as outfile:
+        with open('wrf-demo-capio.json', 'w') as outfile:
             stringWorkflow = json.dumps(jsonCapioWorkflow, sort_keys=False, indent=2)
             outfile.write(stringWorkflow)
 
-        workflow.set_capio_server_path("/home/capio/build/src/server")
-        workflow.set_capio_libcapioposix_path("/home/capio/build/src/posix")
-        workflow.set_capio_libsyscall_intercept_path("/home/opt/capio-v2/lib")
+        workflow.set_capio_server_path("/home/sperrotta/capio/build/src/server")
+        workflow.set_capio_libcapioposix_path("/home/sperrotta/capio/build/src/posix")
+        workflow.set_capio_libsyscall_intercept_path("/home/sperrotta/opt/capio-v2/lib")
         workflow.run_capio_server()
         sleep(1)
         workflow.is_server_capio_running()

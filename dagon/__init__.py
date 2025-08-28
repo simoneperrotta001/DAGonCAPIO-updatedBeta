@@ -184,7 +184,7 @@ class Workflow(object):
         """
         # aggiungere un metodo che oltre a fare queste 3 righe sotto faccia un controllo su quale dei due deve avere la working dir dell'altro in base alle dipendenze
         for task in self.tasks:
-            if len(task.nexts) >= 1:
+            if len(task.nexts) >= 1 or len(self.tasks) == 1:
                 task.create_working_dir_name_capio()
             """else:
                 if len(task.prevs) == 1:
@@ -205,7 +205,7 @@ class Workflow(object):
         """
         # aggiungere un metodo che oltre a fare queste 3 righe sotto faccia un controllo su quale dei due deve avere la working dir dell'altro in base alle dipendenze
         for task in self.tasks:
-            if len(task.nexts) >= 1:
+            if len(task.nexts) >= 1 or len(self.tasks) == 1:
                 task.create_working_dir_capio()
                 self.logger.debug("sto creando la directory di: " + task.name)
 
@@ -242,6 +242,7 @@ class Workflow(object):
         """
         script = "#! /bin/bash\n\n"
 
+        #TODO: remove the forced path for name of the JSON
         script += "CAPIO_LOG_LEVEL=-1 CAPIO_DIR=" + self.cfg['batch']['scratch_dir_base'] + " " + self.capio_server_path + "/capio_server" + " -c ./pipeline-demo-capio.json > server.log & SERVER_PID=$!\n"
         script += "echo $SERVER_PID > " + self.get_scratch_dir_base() + "server_pid.txt\n"
 
@@ -286,6 +287,55 @@ class Workflow(object):
 
         return False
 
+    def generate_script_wrf(self):
+        """
+        generate a script that execute a pipeline of programs in C
+        this programs will be executed with CAPIO
+        """
+        script = "#! /bin/bash\n\n"
+        script += 'export CAPIO_WORKFLOW_NAME=' + self.name + '\n'
+        script += "start_time=$(date +%s%N)\n"
+
+        for task in self.tasks:
+            # Build the argument string with all CAPIO-related variables
+            arg = 'CAPIO_LOG_LEVEL=-1 CAPIO_APP_NAME="' + task.name + '" ' + \
+                  'LD_PRELOAD=' + self.get_capio_libcapioposix_path() + "/libcapio_posix.so:" + \
+                  self.get_capio_libsyscall_intercept_path() + "/libsyscall_intercept.so" + " CAPIO_DIR=" + \
+                  self.cfg['batch']['scratch_dir_base']
+
+            # Remove "CAPIO" only from the task.command without affecting other CAPIO variables
+            clean_command = task.command.replace("CAPIO", "")
+
+            # Combine the cleaned command with the other CAPIO-related arguments
+            arg += " " + clean_command
+
+            # Check and remove "dagon.Workflow.SCHEMA" if present in the argument
+            pos1 = arg.find(dagon.Workflow.SCHEMA, 0)
+            if pos1 != -1:
+                arg = arg.replace(dagon.Workflow.SCHEMA, "")
+                pos2 = arg.find("/", pos1)
+                if pos2 != -1:
+                    arg = arg[:pos2 - 1]
+
+            dependency_dirs = " ".join(task.dependency_dir) if task.dependency_dir else task.working_dir
+            if task.name == "A":
+                #script += arg + " " + dependency_dirs + " &\n"  # aggiunto per permettere ad A di eseguire il programma C in background così da poter permettere a B di fare streaming
+                script += arg + " " + dependency_dirs + " &\n"
+                #script += "sleep 3\n"
+            else:
+                script += arg + " " + dependency_dirs + "\n"
+
+        script += "end_time=$(date +%s%N)\n"
+        script += 'total_time=$(echo "scale=6; ($end_time - $start_time) / 1000000000" | bc)\n'
+        script += 'echo "Tempo totale trascorso: $total_time secondi" > /home/sperrotta/output_dir/total_execution_time.txt\n'
+        script += "SERVER_PID=$(cat " + self.get_scratch_dir_base() + "server_pid.txt)\n"
+        script += "kill $SERVER_PID\n"
+        script += "rm -rf " + self.get_scratch_dir_base() + ".capio_metadata\n"
+        script += "rm -rf /dev/shm/*\n"
+
+        self.tasks[0].set_local_slurm_management_files(False)
+        self.tasks[0].on_execute(script, "run_wrf.sh")
+
     def generate_script_pipeline(self):
         """
         generate a script that execute a pipeline of programs in C
@@ -318,11 +368,21 @@ class Workflow(object):
                   > /home/sperrotta/output_dir/C_stdout.log \
                   2> /home/sperrotta/output_dir/C_stderr.log\n"""
                 # script += "sleep(4)\n"
+                # Check and remove "dagon.Workflow.SCHEMA" if present in the argument
+                arg = task.command
+                pos1 = arg.find(dagon.Workflow.SCHEMA, 0)
+                if pos1 != -1:
+                    arg = arg.replace(dagon.Workflow.SCHEMA, "")
+                    pos2 = arg.find("/", pos1)
+                    if pos2 != -1:
+                        arg = arg[:pos2 - 1]
                 # It is necessary to do this because without the writing of C in these files for reducing the buffering, without permitting to C to interfere with the A and B work
-                script += self.get_capio_dir_base() + "/C \
+                #script += self.get_capio_dir_base() + "/C \
+                script += arg + " \
                   > /home/sperrotta/output_dir/C_stdout.log \
                   2> /home/sperrotta/output_dir/C_stderr.log\n"
             else:
+                #TODO: bisogna controllare che, prima di aggiungere sta roba di CAPIO, il task necessiti di CAPIO, altrimenti va aggiunto soltanto il comando da eseguire senza nulla prima
                 # Build the argument string with all CAPIO-related variables
                 arg = 'CAPIO_LOG_LEVEL=-1 CAPIO_APP_NAME="' + task.name + '" ' + \
                       'LD_PRELOAD=' + self.get_capio_libcapioposix_path() + "/libcapio_posix.so:" + \
